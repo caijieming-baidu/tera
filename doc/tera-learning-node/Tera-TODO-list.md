@@ -1,34 +1,9 @@
 #Tera的TODO List
 ##Task001——SplitTablet的状态机
-### master端状态机
+### master端的分裂设计
 
-**新的master启动流程**
+#### 分裂总体设计
 
-	1、master获得活跃的TS列表
-	2、master从TS中query所有的活跃Tablet
-	3、master加载meta TS；
-	4、读取meta表；
-		4.1、重构内存table和tablet；tablet初始态设置为notinit；
-		4.2、若tablet包含日志
-			4.2.1、若包含日志的tablet与活跃tablet有区间交叠，则丢弃该活跃tablet；
-			4.2.2、发送splittablet操作
-		注意：上述过程是restoremetatable的修改
-	5、遍历每个活跃tablet
-		5.1、若活跃tablet与meta表的区间一致，则内存tablet设置为ready态；
-		5.2、否则，unload该活跃tablet
-	6、将所有notinit的tablet设置为offline；执行tryload操作；
-	
-**定时发生的query**
-	
-	定点收集分裂key
-	
-**loadbalance触发的分裂**
-
-	触发分裂
-
-#### master端的分裂流程
-
-**分裂触发上下文：**
 
 1、    QueryTablet：master从TS定点收集到某个Tablet的workload；若workload达到上水位，执行PickSplitKey，获得分裂点；触发后续分裂操作；
 
@@ -60,11 +35,103 @@
     注意1：分裂与迁移解耦合，分裂之后没有马上将tablet迁移到其他节点，利用本节点的cache局部性；
     注意2：该阶段客户端能继续读写；
     注意3：该步骤可重入；可放弃；
+    
+#### 分裂详细设计
+  
+ **master启动流程修改**：RestoreUserTablet()
+
+	1、收集所有包含日志的tablet，并将日志tablet设置为Onsplit态
+	2、遍历每个活跃tablet的meta
+		2.1、若该meta的keyrange是日志tablet的子区间
+				若meta对应的TS存活
+					设置日志tablet的serveradd和serverid
+		2.2、若该meta的keyrange是日志tablet的区间一致
+				若meta的TS存活
+					设置日志tablet的serveradd和serverid
+		2.3、不属于2.1和2.2条件，执行verify判断：
+				若判断失败
+					unload
+				否则，
+					设置内存tablet为ready
+	3、对所有日志tablet，重选向TS发送分裂（分裂第二阶段）
+	4、将所有notinit的tablet设置为offline；执行tryload操作；  
+
+**日志设计**：
+
+TabletMeta的修改：增加一个TabletOpLog字段，该字段的定义，如下：
+
+	enum LogType {
+    	optional allow_alias = true;
+    	kSplitLog = 10;	
+    }
+	
+	message TabletOpLog {// 复用parent tablet的字段
+		optional LogType type = 1;
+		
+		// for split
+		optional bytes mid_key = 2;//用于分裂的key
+		optional uint64 lchild_tablet;
+		optional uint64 rchild_tablet;
+	}
+
+**分裂接口**：SplitTablet
+	
+	接口：bool MasterImpl::SplitTablet(TabletPtr tablet, uint32_t phase)
+	参数说明：phase指示此时分裂进入哪个阶段
+	
+**具体流程**：
+	
+	分裂竞争阶段：splittablet(tablet, phase0)
+	1、分裂的合理性检查；若不通过，则放弃本轮分裂；
+	2、准备log：获得mid_key，分配lchild_no,rchild_no
+	-----------------------------------------------
+	3、若需要延迟，则延迟分裂；
+	4、若竞争成功，设置onsplit状态，构造tabletlog；
+	   若竞争失败，则放弃本轮分裂；
+	5、进入下一个阶段
+		
+	分裂阶段1：splittablet(tablet, phase1)
+	写log【meta表发送】：
+		1、构造request，response
+		2、构造callback
+		3、发送rpc
+		注意：该步骤，可以是meta的异步写，能被复用
+	写log【回调】：
+		1、若失败，则重选metaTS，延迟，调用写log【meta表发送】
+		2、若成功，则进入下一个阶段
+		
+	分裂阶段2：splittablet(tablet, phase2)
+	TS的split【开始】：tablet带TS地址
+		1、构造request，response
+		2、构造callback
+		3、发送rpc
+	TS的split【回调】：
+		1、若TS宕机，重选TS，调用TS的split【开始】
+		2、若TS重启，调用TS的split【开始】
+		3、若rpc超时TS未应答，调用TS的split【开始】
+		4、若TS应答失败，调用TS的split【开始】
+		5、若TS应答成功，则进入下一个阶段
+
+	分裂阶段3：splittablet(tablet, phase3)
+	清log【开始】：
+		1、构造tabletB和tabletC的插入的TabletMeta
+		2、构造tabletA的删除的TabletMeta
+	清log【meta表发送】：tablet带TS地址
+		1、构造request，response
+		2、构造callback
+		3、发送rpc
+		注意：该步骤，可以是meta的异步写，能被复用
+	清log【回调】：
+		1、若失败，则重选metaTS，延迟，调用清log【meta表发送】
+		2、若成功 
+			2.1、删除tabletA的内存结构，插入tabletB和tabletC的内存结构{处于ready态}
+			2.2、重启该节点的其他分裂
 
 **master端的状态图**
 ![状态图](Image/master分裂状态图.png)
 
-### TS端分裂操作
+### TS端分裂分析与设计
+#### TS端分裂旧流程分析
 
 **TS端的【旧分裂流程】的上半段：**
 
@@ -166,7 +233,7 @@
     
 **注意：**整个分裂流程完成后，都没有删除parent的manifest文件
 
-#### TS的【新分裂流程】设计
+#### TS端新分裂流程设计
 **分裂总体流程：**
 	
 	-----------------------------
@@ -208,10 +275,18 @@
     
     注意：load和unload是可重入的
 
+**TS的收集counter流程修改**:TabletIO::GetAndClearCounter()
+	
+	增加GetMidKey的操作，获得tablet的中间大小对应的key，设置到counter字段中
+
 **TS端的状态图**
 ![状态图](Image/TS的状态图.png)
 
 
+ 	
+ 	
+ 	
+ 	
 
 
 
