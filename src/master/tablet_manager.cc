@@ -69,6 +69,57 @@ Tablet::~Tablet() {
     m_table.reset();
 }
 
+bool Tablet::CollectSplitContext(TabletOpLog* log)
+{
+    // MutexLock lock(&m_mutex);
+    m_mutex.Lock();
+
+    if (!m_counter_list.empty()) {
+        TabletCounter counter = m_counter_list.back();
+        std::string mid_key;
+        std::string key_start = m_meta.key_range().key_start();
+        std::string key_end = m_meta.key_range().key_end();
+
+        mid_key.clear();
+        if (counter.has_mid_key()) {
+            mid_key = counter.mid_key();
+            if ((mid_key <= key_start) || 
+                (key_end.size() > 0 && mid_key >= key_end)) {
+                mid_key.clear();
+            }
+        }
+
+        if (mid_key.size()) {
+            m_mutex.Unlock();
+            
+            log->set_type(kSplitLog);
+            log->set_mid_key(mid_key);
+            // will get table lock
+            log->set_lchild_tablet(this->GetTable()->GetNextTabletNo());
+            log->set_rchild_tablet(this->GetTable()->GetNextTabletNo());
+            return true;
+        }
+    }
+    m_mutex.Unlock();
+    return false;
+}
+
+void Tablet::SetTabletOpLog(TabletOpLog& log)
+{
+    MutexLock lock(&m_mutex);
+    m_meta.mutable_log()->CopyFrom(log);
+}
+
+bool Tablet::GetTabletOpLog(TabletOpLog* log)
+{
+    MutexLock lock(&m_mutex);
+    if (!m_meta.has_log()) {
+        return false;
+    }
+    *log = m_meta.log();
+    return log->type() != kNullLog;
+}
+
 void Tablet::ToMeta(TabletMeta* meta) {
     MutexLock lock(&m_mutex);
     meta->CopyFrom(m_meta);
@@ -505,7 +556,8 @@ Table::Table(const std::string& table_name)
     : m_name(table_name),
       m_status(kTableEnable),
       m_deleted_tablet_num(0),
-      m_max_tablet_no(0) {
+      m_max_tablet_no(0),
+      m_create_time((int64_t)time(NULL)) {
 }
 
 bool Table::FindTablet(const std::string& key_start, TabletPtr* tablet) {
@@ -646,6 +698,7 @@ void Table::ToMeta(TableMeta* meta) {
     meta->set_table_name(m_name);
     meta->set_status(m_status);
     meta->mutable_schema()->CopyFrom(m_schema);
+    meta->set_create_time(m_create_time);
     for (size_t i = 0; i < m_snapshot_list.size(); i++) {
         meta->add_snapshot_list(m_snapshot_list[i]);
     }
@@ -713,6 +766,100 @@ void TabletManager::Init() {
 void TabletManager::Stop() {
 }
 
+bool TabletManager::GetTabletWithOpLog(std::vector<TabletPtr>* log_tablets)
+{
+    m_mutex.Lock();
+    TableList::iterator it = m_all_tables.begin();
+    for (; it != m_all_tables.end(); ++it) {
+        Table& table = *it->second;
+        table.m_mutex.Lock();
+        
+        Table::TabletList::iterator it2 = table.m_tablets_list.begin();
+        for (; it2 != table.m_tablets_list.end(); ++it2) {
+            TabletPtr tablet = it2->second;
+            //tablet->m_mutex.Lock();
+            
+            TabletOpLog log;
+            if (tablet->GetTabletOpLog(&log)) {
+                log_tablets->push_back(tablet);
+            }
+
+            //tablet->m_mutex.Unlock();
+        }
+        table.m_mutex.Unlock();
+    }
+    m_mutex.Unlock();
+    return true;
+}
+
+bool TabletManager::RepairWithSplitLog(std::vector<TabletPtr>& log_tablets, 
+                                            const TabletMeta& report_tabletmeta, 
+                                                    std::string& node_uuid)
+{
+    for (uint32_t i = 0; i < log_tablets.size(); i++) {
+        TabletPtr tablet = log_tablets[i];
+        TabletOpLog log;
+        CHECK(tablet->GetTabletOpLog(&log));
+        CHECK(log.type() == kSplitLog);
+        
+
+        if ((tablet->GetTableName() == report_tabletmeta.table_name()) &&
+            ((tablet->GetKeyStart() == report_tabletmeta.key_range().key_start()) ||
+            (log.mid_key() == report_tabletmeta.key_range().key_start())
+            )) {
+            tablet->SetAddr(report_tabletmeta.server_addr());
+            tablet->SetServerId(node_uuid);
+            LOG(INFO) << __func__ << ", log tablet " << tablet->GetPath() 
+                << ", addr " << tablet->GetServerAddr() 
+                << ", uuid " << tablet->GetServerId();
+            return true;
+        }
+    }
+    return false;
+}
+
+bool TabletManager::SplitTablet(TabletPtr parent, 
+                                TabletPtr lchild_tablet, 
+                                TabletPtr rchild_tablet)
+{
+    std::string table_name = parent->GetTableName();
+    m_mutex.Lock();
+    
+    TableList::iterator it = m_all_tables.find(table_name);
+    CHECK(it != m_all_tables.end());
+    Table& table = *it->second;
+
+    std::string lchild_path = lchild_tablet->GetPath();
+    std::string rchild_path = rchild_tablet->GetPath();
+    
+    uint64_t lnum = leveldb::GetTabletNumFromPath(lchild_path);
+    uint64_t rnum = leveldb::GetTabletNumFromPath(rchild_path);
+    std::string lstart = lchild_tablet->GetKeyStart();
+    std::string rstart = rchild_tablet->GetKeyStart();
+
+    table.m_mutex.Lock();
+    if (table.m_max_tablet_no < lnum || 
+        table.m_max_tablet_no < rnum) {
+        table.m_max_tablet_no = lnum > rnum ? lnum : rnum;
+    }
+    
+    Table::TabletList::iterator tablet_it = table.m_tablets_list.find(lstart);
+    CHECK(tablet_it != table.m_tablets_list.end());
+    table.m_tablets_list.erase(tablet_it);
+    
+    tablet_it = table.m_tablets_list.find(rstart);
+    CHECK(tablet_it == table.m_tablets_list.end());
+    
+    // lchild and rchild's state is ready
+    table.m_tablets_list[lstart] = lchild_tablet; 
+    table.m_tablets_list[rstart] = rchild_tablet; 
+    table.m_mutex.Unlock();
+    
+    m_mutex.Unlock();
+
+    return true;
+}
+
 bool TabletManager::AddTable(const std::string& table_name,
                              const TableMeta& meta,
                              TablePtr* table, StatusCode* ret_status) {
@@ -737,6 +884,7 @@ bool TabletManager::AddTable(const std::string& table_name,
     m_mutex.Unlock();
     (*table)->m_schema.CopyFrom(meta.schema());
     (*table)->m_status = meta.status();
+    (*table)->m_create_time = meta.create_time();
     for (int32_t i = 0; i < meta.snapshot_list_size(); ++i) {
         (*table)->m_snapshot_list.push_back(meta.snapshot_list(i));
         LOG(INFO) << table_name << " add snapshot " << meta.snapshot_list(i);
@@ -981,12 +1129,15 @@ bool TabletManager::ShowTable(std::vector<TablePtr>* table_meta_list,
             table_meta_list->push_back(table);
         }
         table_found_num++;
-
-        it2 = table->m_tablets_list.begin();
-
+        if (table_found_num == 1) {
+            it2 = table->m_tablets_list.lower_bound(start_tablet_key);
+        } else {
+            it2 = table->m_tablets_list.begin();
+        }
         for (; it2 != table->m_tablets_list.end(); ++it2) {
-            if (tablet_found_num >= max_tablet_found)
+            if (tablet_found_num >= max_tablet_found) {
                 break;
+            }
             TabletPtr tablet = it2->second;
             tablet_found_num++;
             if (tablet_meta_list != NULL) {

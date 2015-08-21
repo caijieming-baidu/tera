@@ -38,10 +38,11 @@ public:
         kNotInit = kTabletNotInit,
         kReady = kTabletReady,
         kOnLoad = kTabletOnLoad,
-        kOnSplit = kTabletOnSplit,
-        kSplited = kTabletSplited,
         kUnLoading = kTabletUnLoading,
-        kUnLoading2 = kTabletUnLoading2
+        kUnLoading2 = kTabletUnLoading2,
+        kOnSplit = kTabletOnSplit,// discard
+        kSplited = kTabletSplited,// discard
+        kFrozen = kTabletFrozen,
     };
     typedef std::map< std::string, std::set<std::string> > ColumnFamilyMap;
     struct ScanOptions {
@@ -96,7 +97,10 @@ public:
                       leveldb::TableCache* table_cache = NULL,
                       StatusCode* status = NULL);
     virtual bool Unload(StatusCode* status = NULL);
+    
     virtual bool Split(std::string* split_key, StatusCode* status = NULL);
+    virtual bool GetMidKey(std::string* mid_key, StatusCode* status); 
+    
     virtual bool Compact(StatusCode* status = NULL);
     bool CompactMinor(StatusCode* status = NULL);
     bool Destroy(StatusCode* status = NULL);
@@ -127,9 +131,12 @@ public:
                       bool* is_complete,
                       StatusCode* status = NULL);
 
+    bool LowLevelSeek(const std::string& row_key, const ScanOptions& scan_options,
+                      RowResult* value_list, StatusCode* status = NULL);
+
     bool WriteOne(const std::string& key, const std::string& value,
-                  bool sync = false, StatusCode* status = NULL);
-    bool WriteBatch(leveldb::WriteBatch* batch, bool sync = false,
+                  bool sync = true, StatusCode* status = NULL);
+    bool WriteBatch(leveldb::WriteBatch* batch, bool disable_wal = false, bool sync = true,
                     StatusCode* status = NULL);
     virtual bool Write(const WriteTabletRequest* request,
                        WriteTabletResponse* response,
