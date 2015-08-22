@@ -88,7 +88,7 @@ bool Tablet::CollectSplitContext(TabletOpLog* log)
                 mid_key.clear();
             }
         }
-
+        
         if (mid_key.size()) {
             m_mutex.Unlock();
             

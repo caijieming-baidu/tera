@@ -3305,7 +3305,7 @@ void MasterImpl::SplitTabletCallback(TabletPtr tablet,
             SplitClosure* done = 
                 NewClosure(this, &MasterImpl::SplitTabletCallback,
                         next_tablet, 0);
-            SplitTabletAsync(tablet, done);
+            SplitTabletAsync(next_tablet, done);
         }
     } else {
         // resched wait tablet to other ts
