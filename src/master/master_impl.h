@@ -203,6 +203,7 @@ private:
     void UnloadTabletAsync(std::string table_name, std::string key_start,
                            std::string server_addr, int32_t retry);
     void LogUnload(TabletPtr tablet, UnloadClosure* done);
+    void UnloadTabletAfterLog(TabletPtr tablet, UnloadClosure* done);
     void LogUnloadCallback(TabletPtr log_unload_tablet, int retry_times,
                             TabletPtr tablet, UnloadClosure *done, 
                             WriteTabletRequest* log_request, 

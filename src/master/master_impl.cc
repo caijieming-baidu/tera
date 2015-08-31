@@ -419,7 +419,7 @@ void MasterImpl::RestoreUserTablet(const std::vector<TabletMeta>& report_meta_li
             UnloadClosure* done =
                 NewClosure(this, &MasterImpl::UnloadTabletCallback,
                         tablet, FLAGS_tera_master_impl_retry_times);
-            UnloadTabletAsync(tablet, done);
+            UnloadTabletAfterLog(tablet, done);
             continue;
         }
 
@@ -2246,6 +2246,11 @@ void MasterImpl::LogUnloadCallback(TabletPtr log_unload_tablet, int retry_times,
     }
 
     // exec unload op
+    UnloadTabletAfterLog(tablet, done);
+}
+
+void MasterImpl::UnloadTabletAfterLog(TabletPtr tablet, UnloadClosure* done)
+{
     tabletnode::TabletNodeClient node_client(tablet->GetServerAddr(),
             FLAGS_tera_master_unload_rpc_timeout);
     UnloadTabletRequest* request = new UnloadTabletRequest;
