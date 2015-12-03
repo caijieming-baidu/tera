@@ -47,6 +47,7 @@ public:
     typedef std::map< std::string, std::pair<std::string, std::string> > QualifierRange;
     struct ScanOptions {
         uint32_t max_versions;
+        uint32_t version_num; // restore version_num for stream scan
         uint32_t max_size;
         int64_t ts_start;
         int64_t ts_end;
