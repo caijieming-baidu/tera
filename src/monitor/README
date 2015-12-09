@@ -1,0 +1,17 @@
+usage:
+    ./teramo dumptrace <dbname> <tablename>
+
+tera.flag add flag like:
+    --mdt_server_addr=0.0.0.0:1239
+
+compile need:
+    libftrace.a
+    logger.h
+    src/proto/query.proto
+
+data log in trace:
+    src/proto/monitor.proto:TabletNodeStat
+
+ChangeLog:
+    add addr in TabletNodeStat, use as primary key in trace
+
