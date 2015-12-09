@@ -15,10 +15,12 @@
 
 #include "common/file/file_path.h"
 #include "proto/monitor.pb.h"
+#include "proto/query.pb.h"
 #include "proto/tabletnode.pb.h"
 #include "sdk/tera.h"
 #include "utils/utils_cmd.h"
 #include "utils/timer.h"
+#include "monitor/logger.h"
 
 DEFINE_string(tera_monitor_default_request_filename, "tera_monitor.request", "");
 DEFINE_string(tera_monitor_default_response_filename, "tera_monitor.response", "");
@@ -435,6 +437,47 @@ void Eva_FillGetInfoRequest(MonitorRequest* request, std::string ts_start, std::
     request->set_max_timestamp(end);
 }
 
+void LogStateTableToTrace(std::string dbname, std::string tablename) {
+    // get 2s stat info
+    int64_t start_ts = get_micros() - 2000000;
+    while (1) {
+        int64_t end_ts = get_micros();
+
+        // init request
+        MonitorRequest request;
+        MonitorResponse response;
+        request.set_cmd(tera::kGetAll);
+        request.set_min_timestamp(start_ts);
+        request.set_max_timestamp(end_ts);
+        InitFlags(0, NULL, request);
+
+        // query tabletnode info
+        if (FillResponse(request, &response) >= 0) {
+            // dump response
+            for (int i = 0; i < response.stat_list_size(); ++i) {
+                const TabletNodeStats& stat_list = response.stat_list(i);
+                for (int j = 0; j < stat_list.stat_size(); ++j) {
+                    TabletNodeStat stat = stat_list.stat(j);
+                    /*
+                    std::cout << stat.ShortDebugString() << " ";
+                    for (int k = 0; k < stat.extra_stat_size(); ++k) {
+                        ExtraStat extra_stat = stat.extra_stat(k);
+                        if (extra_stat.name() == "rand_read_delay") {
+                            std::cout << extra_stat.name() << ": " << extra_stat.value() << " ";
+                        }
+                    }
+                    std::cout << std::endl;
+                    */
+                    ::mdt::LogProtoBufV2(dbname, tablename, stat.addr(), &stat);
+                }
+            }
+        }
+
+        // sleep, and next round
+        sleep(2);
+        start_ts = end_ts + 1;
+    }
+}
 
 int main(int argc, char* argv[]) {
     int ret = 0;
@@ -457,6 +500,12 @@ int main(int argc, char* argv[]) {
         TEST_FillGetAllRequest(&request);
     } else if (string(argv[1]) == "eva") { // ./teramo eva timestamp_strat timestamp_end
         Eva_FillGetInfoRequest(&request, argv[2], argv[3]);
+    } else if (string(argv[1]) == "dumptrace") { // ./teramo dumptrace dbname tablename
+        if (argc < 4) {
+            std::cout << " usage:  ./teramo dumptrace dbname tablename\n";
+            exit(-1);
+        }
+        LogStateTableToTrace(argv[2], argv[3]);
     } else {
         reqfile = argv[1];
         if (argc >= 3) {

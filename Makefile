@@ -112,7 +112,7 @@ teracli: $(CLIENT_OBJ) $(LIBRARY)
 	$(CXX) -o $@ $(CLIENT_OBJ) $(LIBRARY) $(LDFLAGS)
 
 teramo: $(MONITOR_OBJ) $(LIBRARY)
-	$(CXX) -o $@ $(MONITOR_OBJ) $(LIBRARY) $(LDFLAGS)
+	$(CXX) -o $@ $(MONITOR_OBJ) libftrace.a $(LIBRARY) $(LDFLAGS)
 
 tera_mark: $(MARK_OBJ) $(LIBRARY) $(LEVELDB_LIB)
 	$(CXX) -o $@ $(MARK_OBJ) $(LIBRARY) $(LEVELDB_LIB) $(LDFLAGS)
