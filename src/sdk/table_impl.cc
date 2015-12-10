@@ -281,9 +281,9 @@ ResultStream* TableImpl::Scan(const ScanDescriptor& desc, ErrorCode* err) {
         }
     }
     ResultStream * results = NULL;
-    if (desc.IsAsync() && !_table_schema.kv_only()) {
+    if (desc.IsAsync() && (_table_schema.raw_key() != GeneralKv)) {
         VLOG(6) << "activate async-scan";
-        results = new ResultStreamAsyncImpl(this, impl);
+        results = new ResultStreamBatchImpl(this, impl);
     } else {
         VLOG(6) << "activate sync-scan";
         results = new ResultStreamSyncImpl(this, impl);
@@ -358,6 +358,8 @@ void TableImpl::CommitScan(ScanTask* scan_task,
         tera::ColumnFamily* column_family = request->add_cf_list();
         column_family->CopyFrom(*(impl->GetColumnFamily(i)));
     }
+    // set qualifier range
+    impl->SetQualifierRange(request);
 
     request->set_timestamp(common::timer::get_micros());
     Closure<void, ScanTabletRequest*, ScanTabletResponse*, bool, int>* done =
