@@ -70,8 +70,7 @@ message LoadTabletRequest {
     repeated uint64 snapshots_id = 9;
     repeated uint64 snapshots_sequence = 10;
     repeated uint64 parent_tablets = 11;
-    repeated uint64 rollback_snapshots = 12;
-    repeated uint64 rollback_points = 13;
+    repeated Rollback rollbacks = 12;
 }
 
 message LoadTabletResponse {
@@ -297,6 +296,16 @@ message MergeTabletResponse {
     required uint64 sequence_id = 2;
 }
 
+message TsCmdCtrlRequest {
+    required uint64 sequence_id = 1;
+    required string command = 2;
+}
+
+message TsCmdCtrlResponse {
+    required uint64 sequence_id = 1;
+    required StatusCode status = 2;
+}
+
 // RPC interface
 
 service TabletNodeServer {
@@ -326,6 +335,6 @@ service TabletNodeServer {
     rpc Rollback(SnapshotRollbackRequest) returns(SnapshotRollbackResponse);
 
     rpc SplitTablet(SplitTabletRequest) returns(SplitTabletResponse);
+    rpc CmdCtrl(TsCmdCtrlRequest) returns(TsCmdCtrlResponse);
 }
 option cc_generic_services = true;
-

@@ -32,6 +32,12 @@ message TabletLocation {
     required string server_addr = 2;
 }
 
+message Rollback {
+    optional string name = 1;
+    optional uint64 snapshot_id = 2;
+    optional uint64 rollback_point = 3;
+}
+
 message ScanOption {
     optional KeyRange key_range = 1;
     optional int32 max_version = 2;
@@ -59,13 +65,31 @@ message TabletCounter {
     optional bool is_on_busy = 15 [default = false];
 }
 
+message TableCounter {
+    optional int64 lread = 1;
+    optional int64 scan_rows = 2;
+    optional int64 scan_max = 3;
+    optional int64 scan_size = 4;
+    optional int64 read_rows = 5;
+    optional int64 read_max = 6;
+    optional int64 read_size = 7;
+    optional int64 write_rows = 8;
+    optional int64 write_max = 9;
+    optional int64 write_size = 10;
+
+    optional int64 tablet_num = 20;
+    optional int64 notready_num = 21;
+    optional int64 size = 22;
+    repeated int64 lg_size = 23;
+}
+
 message TableMeta {
     optional string table_name = 1;
     optional TableStatus status = 2;
     optional TableSchema schema = 3;
     repeated uint64 snapshot_list = 4;
     optional uint64 create_time = 5;
-    repeated uint64 rollback_snapshot = 6;
+    repeated string rollback_names = 6;
 }
 
 message TabletMeta {
@@ -81,11 +105,12 @@ message TabletMeta {
     repeated uint64 snapshot_list = 11;
     repeated uint64 parent_tablets = 12;
     repeated int64 lg_size = 13;
-    repeated uint64 rollback_points = 14;
+    repeated Rollback rollbacks = 14;
 }
 
 message TableMetaList {
     repeated TableMeta meta = 1;
+    repeated TableCounter counter = 2;
 }
 
 message TabletMetaList {

@@ -46,6 +46,7 @@ public:
     typedef std::map< std::string, std::set<std::string> > ColumnFamilyMap;
     struct ScanOptions {
         uint32_t max_versions;
+        uint32_t version_num; // restore version_num for stream scan
         uint32_t max_size;
         int64_t ts_start;
         int64_t ts_end;
@@ -161,11 +162,14 @@ public:
     void SetStatus(TabletStatus status);
     TabletStatus GetStatus();
 
-    void GetAndClearCounter(TabletCounter* counter, int64_t interval);
+    void GetAndClearCounter(TabletCounter* counter);
 
     int32_t AddRef();
     int32_t DecRef();
     int32_t GetRef() const;
+
+    static bool FindAverageKey(const std::string& start, const std::string& end,
+                               std::string* res);
 
 private:
     friend class TabletWriter;

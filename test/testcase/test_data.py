@@ -42,6 +42,9 @@ def test_table_random_write():
     common.scan_table(table_name=table_name, file_path=scan_file, allversion=False)
     nose.tools.assert_true(common.compare_files(dump_file, scan_file, need_sort=True))
 
+    common.scan_table(table_name=table_name, file_path=scan_file, allversion=False, snapshot=0, is_async=True)
+    nose.tools.assert_true(common.compare_files(dump_file, scan_file, need_sort=True))
+
 
 @nose.tools.with_setup(common.create_multiversion_table, common.cleanup)
 def test_table_random_write_versions():
@@ -56,13 +59,20 @@ def test_table_random_write_versions():
     dump_file1 = 'dump1.out'
     dump_file2 = 'dump2.out'
     scan_file = 'scan.out'
-    common.run_tera_mark([(dump_file1, False), (dump_file2, False)], op='w', table_name=table_name, cf='cf0:q,cf1:q',
+    common.run_tera_mark([(dump_file1, False)], op='w', table_name=table_name, cf='cf0:q,cf1:q',
                          random='random', key_seed=1, value_seed=10, value_size=100, num=10000, key_size=20)
-    common.run_tera_mark([(dump_file1, True)], op='w', table_name=table_name, cf='cf0:q,cf1:q', random='random',
+    common.run_tera_mark([(dump_file1, True), (dump_file2, False)], op='w', table_name=table_name, cf='cf0:q,cf1:q', random='random',
                          key_seed=1, value_seed=11, value_size=100, num=10000, key_size=20)
     common.scan_table(table_name=table_name, file_path=scan_file, allversion=True)
     nose.tools.assert_true(common.compare_files(dump_file1, scan_file, need_sort=True))
+
+    common.scan_table(table_name=table_name, file_path=scan_file, allversion=True, snapshot=0, is_async=True)
+    nose.tools.assert_true(common.compare_files(dump_file1, scan_file, need_sort=True))
+
     common.scan_table(table_name=table_name, file_path=scan_file, allversion=False)
+    nose.tools.assert_true(common.compare_files(dump_file2, scan_file, need_sort=True))
+
+    common.scan_table(table_name=table_name, file_path=scan_file, allversion=False, snapshot=0, is_async=True)
     nose.tools.assert_true(common.compare_files(dump_file2, scan_file, need_sort=True))
 
 
@@ -82,6 +92,9 @@ def test_table_write_delete():
     common.run_tera_mark([], op='d', table_name=table_name, cf='cf0:q,cf1:q', random='random',
                          key_seed=1, value_seed=1, value_size=100, num=10000, key_size=20)
     common.scan_table(table_name=table_name, file_path=scan_file, allversion=True)
+    nose.tools.assert_true(common.file_is_empty(scan_file))
+
+    common.scan_table(table_name=table_name, file_path=scan_file, allversion=False, snapshot=0, is_async=True)
     nose.tools.assert_true(common.file_is_empty(scan_file))
 
 

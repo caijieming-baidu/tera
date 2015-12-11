@@ -12,6 +12,7 @@ DEFINE_string(tera_role, "", "the role of tera running binary, should be one of 
 DEFINE_string(tera_user_identity, "", "the identity of tera user");
 DEFINE_string(tera_user_passcode, "", "the passcode of tera user");
 DEFINE_bool(tera_acl_enabled, false, "enable access control");
+DEFINE_bool(tera_only_root_create_table, false, "only the root user can create table");
 
 DEFINE_int64(tera_heartbeat_retry_period_factor, 1, "the heartbeat period factor when retry send heartbeat");
 DEFINE_int32(tera_heartbeat_retry_times, 5, "the max retry times when fail to send report request");
@@ -35,7 +36,7 @@ DEFINE_int32(tera_tablet_max_block_log_number, 50, "max number of unsed log file
 DEFINE_int64(tera_tablet_write_log_time_out, 5, "max time(sec) to wait for log writing or sync");
 DEFINE_bool(tera_log_async_mode, true, "enable async mode for log writing and sync");
 DEFINE_int64(tera_tablet_log_file_size, 32, "the log file size (in MB) for tablet");
-DEFINE_int64(tera_tablet_write_buffer_size, 32, "the buffer size (in MB) for tablet write buffer");
+DEFINE_int64(tera_tablet_max_write_buffer_size, 32, "the buffer size (in MB) for tablet write buffer");
 DEFINE_int64(tera_tablet_write_block_size, 4, "the block size (in KB) for teblet write block");
 DEFINE_int64(tera_tablet_living_period, -1, "the living period of tablet");
 DEFINE_int32(tera_tablet_flush_log_num, 100000, "the max log number before flush memtable");
@@ -165,7 +166,7 @@ DEFINE_int32(tera_tabletnode_scan_pack_max_size, 10240, "the max size(KB) of the
 
 DEFINE_int32(tera_asyncwriter_pending_limit, 10000, "the max pending data size (KB) in async writer");
 DEFINE_bool(tera_enable_level0_limit, true, "enable level0 limit");
-DEFINE_int32(tera_tablet_level0_file_limit, 20, "the max level0 file num before write busy");
+DEFINE_int32(tera_tablet_level0_file_limit, 20000, "the max level0 file num before write busy");
 DEFINE_int32(tera_asyncwriter_sync_interval, 100, "the interval (in ms) to sync write buffer to disk");
 DEFINE_int32(tera_asyncwriter_sync_size_threshold, 1024, "force sync per X KB");
 DEFINE_int32(tera_asyncwriter_batch_size, 1024, "write batch to leveldb per X KB");
@@ -196,6 +197,7 @@ DEFINE_int32(tera_tabletnode_gc_log_level, 15, "the vlog level [0 - 16] for cach
 
 DEFINE_bool(tera_tabletnode_tcm_cache_release_enabled, true, "enable the timer to release tcmalloc cache");
 DEFINE_int32(tera_tabletnode_tcm_cache_release_period, 180, "the period (in sec) to try release tcmalloc cache");
+DEFINE_int64(tera_tabletnode_tcm_cache_size, 838860800, "TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES");
 
 ///////// SDK  /////////
 DEFINE_string(tera_sdk_impl_type, "tera", "the activated type of SDK impl");
@@ -232,6 +234,7 @@ DEFINE_int64(tera_sdk_max_reader_pending_num, INT64_MAX, "default number of pend
 DEFINE_bool(tera_sdk_async_blocking_enabled, true, "enable blocking when async writing and reading");
 DEFINE_int32(tera_sdk_update_meta_concurrency, 3, "the concurrency for updating meta");
 DEFINE_int32(tera_sdk_update_meta_buffer_limit, 102400, "the pack size limit for updating meta");
+DEFINE_bool(tera_sdk_table_rename_enabled, false, "enable sdk table rename");
 
 DEFINE_bool(tera_sdk_cookie_enabled, true, "enable sdk cookie");
 DEFINE_string(tera_sdk_cookie_path, "/tmp/.tera_cookie", "the default path of sdk cookie");
@@ -243,6 +246,7 @@ DEFINE_int64(tera_sdk_perf_counter_log_interval, 1, "the interval of performance
 DEFINE_bool(tera_sdk_scan_async_enabled, false, "enable async scan");
 DEFINE_int64(tera_sdk_scan_async_cache_size, 16, "the max buffer size (in MB) for cached scan results");
 DEFINE_int32(tera_sdk_scan_async_parallel_max_num, 500, "the max number of concurrent task sending");
+DEFINE_int32(tera_sdk_max_batch_scan_req, 10, "the max number of concurrent scan req");
 
 DEFINE_string(tera_ins_addr_list, "", "the ins cluster addr. e.g. abc.com:1234,abb.com:1234");
 DEFINE_string(tera_ins_root_path, "", "root path on ins. e.g /ps/sandbox");

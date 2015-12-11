@@ -12,13 +12,17 @@ import json
 
 from conf import const
 
-
 def print_debug_msg(sid=0, msg=""):
     """
     provide general print interface
     """
     print "@%d======================%s" % (sid, msg)
 
+def execute_and_check_returncode(cmd, code):
+    print(cmd)
+    ret = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    ret.communicate()
+    nose.tools.assert_equal(ret.returncode, code)
 
 def exe_and_check_res(cmd):
     """
@@ -38,7 +42,7 @@ def clear_env():
     print_debug_msg(4, "delete table_test001 and table_test002, clear env")
 
     cmd = "./teracli disable table_test001"
-    exe_and_check_res(cmd)   
+    exe_and_check_res(cmd)
 
     cmd = "./teracli drop table_test001"
     exe_and_check_res(cmd)
@@ -87,7 +91,7 @@ def cluster_op(op):
 
 
 def create_kv_table():
-    print 'print kv table'
+    print 'create kv table'
     cleanup()
     ret = subprocess.Popen(const.teracli_binary + ' create test', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     print ''.join(ret.stdout.readlines())
@@ -95,7 +99,7 @@ def create_kv_table():
 
 
 def create_singleversion_table():
-    print 'print single version table'
+    print 'create single version table'
     cleanup()
     ret = subprocess.Popen(const.teracli_binary + ' create "test{cf0, cf1}"',
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -104,7 +108,7 @@ def create_singleversion_table():
 
 
 def create_multiversion_table():
-    print 'print multi version table'
+    print 'create multi version table'
     cleanup()
     ret = subprocess.Popen(const.teracli_binary + ' create "test{cf0<maxversions=20>, cf1<maxversions=20>}"',
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -201,12 +205,13 @@ def run_tera_mark(file_path, op, table_name, random, value_size, num, key_size, 
         print ''.join(ret.stderr.readlines())
 
 
-def scan_table(table_name, file_path, allversion, snapshot=0):
+def scan_table(table_name, file_path, allversion, snapshot=0, is_async=False):
     """
     This function scans the table and write the output into file_path
     :param table_name: table name
     :param file_path: write scan output into file_path
     :param allversion: [True | False]
+    :param is_async: True for batch scan
     """
 
     allv = ''
@@ -214,13 +219,18 @@ def scan_table(table_name, file_path, allversion, snapshot=0):
         allv += 'scanallv'
     else:
         allv += 'scan'
-
+    
+    if is_async is True:
+        async_flag = '--tera_sdk_scan_async_enabled=true --v=30 --tera_client_scan_async_enabled=true'
+    else:
+        async_flag = '--tera_sdk_scan_async_enabled=false'
+        
     snapshot_args = ''
     if snapshot != 0:
         snapshot_args += '--snapshot={snapshot}'.format(snapshot=snapshot)
-
-    scan_cmd = '{teracli} {op} {table_name} "" "" {snapshot} > {out}'.format(
-        teracli=const.teracli_binary, op=allv, table_name=table_name, snapshot=snapshot_args, out=file_path)
+    
+    scan_cmd = '{teracli} {flags} {op} {table_name} "" "" {snapshot} > {out}'.format(
+        teracli=const.teracli_binary, flags=async_flag, op=allv, table_name=table_name, snapshot=snapshot_args, out=file_path)
     print scan_cmd
     ret = subprocess.Popen(scan_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     print ''.join(ret.stdout.readlines())
@@ -254,14 +264,14 @@ def parse_showinfo():
         line = line.strip("\n")
         line_list = line.split(" ")
         list_ret = [line_list[i] for i in range(len(line_list)) if line_list[i] != ""]
-        
+
         retinfo[list_ret[1]] = {}
         retinfo[list_ret[1]]["status"] = list_ret[2]
         retinfo[list_ret[1]]["size"] = list_ret[3]
         retinfo[list_ret[1]]["lg_size"] = [list_ret[j] for j in range(4, len(list_ret) - 2)]
         retinfo[list_ret[1]]["tablet"] = list_ret[len(list_ret) - 2]
         retinfo[list_ret[1]]["busy"] = list_ret[len(list_ret) - 1]
-    
+
     print json.dumps(retinfo)
     return retinfo
 
@@ -300,6 +310,20 @@ def snapshot_op(table_name):
     return None
 
 
+def rollback_op(table_name, snapshot, rollback_name):
+    """
+    Invoke rollback action
+    :param table_name: table name
+    :param snapshot: rollback to a specific snapshot
+    :return: None
+    """
+    rollback_cmd = '{teracli} snapshot {table_name} rollback --snapshot={snapshot} --rollback_name={rname}'.\
+        format(teracli=const.teracli_binary, table_name=table_name, snapshot=snapshot, rname=rollback_name)
+    print rollback_cmd
+    ret = subprocess.Popen(rollback_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    print ''.join(ret.stdout.readlines())
+
+
 def compare_files(file1, file2, need_sort):
     """
     This function compares two files.
@@ -316,7 +340,7 @@ def compare_files(file1, file2, need_sort):
         print ''.join(ret.stderr.readlines())
         os.rename(file1+'.sort', file1)
         os.rename(file2+'.sort', file2)
-    return filecmp.cmp(file1, file2)
+    return filecmp.cmp(file1, file2, shallow=False)
 
 
 def file_is_empty(file_path):
@@ -332,3 +356,11 @@ def cleanup_files(file_list):
     for file_path in file_list:
         os.remove(file_path)
 
+def check_show_user_result(cmd, should_contain, substr):
+    print(cmd)
+    ret = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    stdoutdata = ''.join(ret.stdout.readlines())
+    if should_contain:
+        nose.tools.assert_true(substr in stdoutdata)
+    else:
+        nose.tools.assert_true(substr not in stdoutdata)
