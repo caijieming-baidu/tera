@@ -487,8 +487,7 @@ Status DBImpl::Recover(VersionEdit* edit) {
       std::string path = RealDbName(dbname_, *it_tablet);
       Log(options_.info_log, "[%s] GetChildren(%s)", dbname_.c_str(), path.c_str());
       std::vector<std::string> filenames;
-      s = env_->GetChildren(path, &filenames);
-      if (!s.ok()) {
+      if (!env_->GetChildren(path, &filenames).ok()) {
         Log(options_.info_log, "[%s] GetChildren(%s) fail: %s",
             dbname_.c_str(), path.c_str(), s.ToString().c_str());
         continue;
@@ -610,7 +609,7 @@ Status DBImpl::CompactMemTable() {
   return s;
 }
 
-void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
+void DBImpl::CompactRange(const Slice* begin, const Slice* end, int lg_no) {
   int max_level_with_files = 1;
   {
     MutexLock l(&mutex_);

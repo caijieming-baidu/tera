@@ -399,33 +399,33 @@ bool TabletIO::Split(std::string* split_key, StatusCode* status) {
         }
     }
 
+    split_key->clear();
     if (!key_split.empty()) {
-        // find split key successfully
         *split_key = key_split.ToString();
-    } else if (FindAverageKey(m_start_key, m_end_key, split_key)) {
-        // could not find split_key, use average key
     } else {
-        // could not find split key
-        SetStatusCode(kTableNotSupport, status);
-        MutexLock lock(&m_mutex);
-        m_status = kReady;
-        m_db_ref_count--;
-        return false;
+        // could not find split_key, try calc average key
+        FindAverageKey(m_start_key, m_end_key, split_key);
     }
 
     VLOG(5) << "start: [" << DebugString(m_start_key)
         << "], end: [" << DebugString(m_end_key)
         << "], split: [" << DebugString(*split_key) << "]";
 
-    {
-        MutexLock lock(&m_mutex);
+    MutexLock lock(&m_mutex);
+    m_db_ref_count--;
+    if (*split_key != ""
+        && *split_key != m_start_key
+        && *split_key != m_end_key) {
         m_status = kSplited;
-        m_db_ref_count--;
+        return true;
+    } else {
+        SetStatusCode(kTableNotSupport, status);
+        m_status = kReady;
+        return false;
     }
-    return true;
 }
 
-bool TabletIO::Compact(StatusCode* status) {
+bool TabletIO::Compact(int lg_no, StatusCode* status) {
     {
         MutexLock lock(&m_mutex);
         if (m_status != kReady) {
@@ -439,7 +439,7 @@ bool TabletIO::Compact(StatusCode* status) {
         m_db_ref_count++;
     }
     CHECK_NOTNULL(m_db);
-    m_db->CompactRange(NULL, NULL);
+    m_db->CompactRange(NULL, NULL, lg_no);
 
     {
         MutexLock lock(&m_mutex);
@@ -528,7 +528,7 @@ bool TabletIO::GetDataSize(uint64_t* size, std::vector<uint64_t>* lgsize,
     }
 
     m_db->GetApproximateSizes(size, lgsize);
-    VLOG(6) << "GetDataSize(" << m_tablet_path << ") : " << *size;
+    VLOG(10) << "GetDataSize(" << m_tablet_path << ") : " << *size;
     {
         MutexLock lock(&m_mutex);
         m_db_ref_count--;
@@ -979,9 +979,8 @@ bool TabletIO::LowLevelSeek(const std::string& row_key,
                 compact_strategy->ScanDrop(it_data->key(), 0);
             }
         } else {
-            VLOG(10) << "ll-seek fail, error iterator.";
-            SetStatusCode(kKeyNotExist, &s);
-            break;
+            VLOG(10) << "ll-seek fail, not found.";
+            continue;
         }
 
         if (qu_set.empty()) {
@@ -1562,6 +1561,7 @@ void TabletIO::SetupOptionsForLG() {
     std::map<uint32_t, leveldb::LG_info*>* lg_info_list =
         new std::map<uint32_t, leveldb::LG_info*>;
 
+    int64_t triggered_log_size = 0;
     for (int32_t lg_i = 0; lg_i < m_table_schema.locality_groups_size();
          ++lg_i) {
         if (m_table_schema.locality_groups(lg_i).is_del()) {
@@ -1617,6 +1617,7 @@ void TabletIO::SetupOptionsForLG() {
         } else {
             lg_info->write_buffer_size = max_size;
         }
+        triggered_log_size += lg_info->write_buffer_size;
         exist_lg_list->insert(lg_i);
         (*lg_info_list)[lg_i] = lg_info;
     }
@@ -1625,8 +1626,7 @@ void TabletIO::SetupOptionsForLG() {
         delete exist_lg_list;
     } else {
         m_ldb_options.exist_lg_list = exist_lg_list;
-        m_ldb_options.flush_triggered_log_size = (exist_lg_list->size() + 1)
-                                               * m_ldb_options.write_buffer_size;
+        m_ldb_options.flush_triggered_log_size = triggered_log_size * 2;
     }
     if (lg_info_list->size() == 0) {
         delete lg_info_list;
