@@ -262,6 +262,8 @@ public:
     void SetSnapshot(uint64_t snapshot_id);
 
     void SetBufferSize(int64_t buf_size);
+    void SetNumberLimit(int64_t number_limit);
+    int64_t GetNumberLimit();
 
     void SetAsync(bool async);
 
@@ -323,6 +325,7 @@ private:
     tera::TimeRange* _timer_range;
     QualifierRange _qu_range;
     int64_t _buf_size;
+    int64_t _number_limit;
     bool _is_async;
     int32_t _max_version;
     int64_t _pack_interval;

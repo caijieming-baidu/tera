@@ -753,6 +753,7 @@ ScanDescImpl::ScanDescImpl(const string& rowkey)
     : _start_timestamp(0),
       _timer_range(NULL),
       _buf_size(65536),
+      _number_limit(std::numeric_limits<long>::max()),
       _is_async(FLAGS_tera_sdk_scan_async_enabled),
       _max_version(1),
       _pack_interval(5000),
@@ -892,6 +893,14 @@ uint64_t ScanDescImpl::GetSnapshot() const {
 
 void ScanDescImpl::SetBufferSize(int64_t buf_size) {
     _buf_size = buf_size;
+}
+
+void ScanDescImpl::SetNumberLimit(int64_t number_limit) {
+    _number_limit = number_limit;
+}
+
+int64_t ScanDescImpl::GetNumberLimit() {
+    return _number_limit;
 }
 
 void ScanDescImpl::SetAsync(bool async) {
