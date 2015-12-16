@@ -239,6 +239,7 @@ message ScanTabletRequest {
     optional int64 timestamp = 18 [default = 0];
     optional int64 timeout = 19;
     repeated ScanQualifierRange qu_range = 20;
+    optional int64 number_limit = 21;
 }
 
 message ScanTabletResponse {
