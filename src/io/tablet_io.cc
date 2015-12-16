@@ -723,14 +723,14 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
                 std::string next_key;
                 m_key_operator->FindSuccessor(key.ToString(), &next_key);
                 SeekIterator(next_key, "", "", kLatestTs, it);
-                VLOG(10) << "seek to next_key " << DebugString(next_key);
+                VLOG(10) << "ll-scan seek to next_key " << DebugString(next_key);
                 continue;
             } else {
                 leveldb::Slice scan_cf = qu_it->first;
                 if (scan_cf.compare(col) > 0) {
                     // seek to next cf
                     SeekIterator(key.ToString(), scan_cf.ToString(), "", kLatestTs, it);
-                    VLOG(10) << "seek to next cf " << DebugString(scan_cf.ToString());
+                    VLOG(10) << "ll-scan seek to next cf " << DebugString(scan_cf.ToString());
                     continue;
                 }
                 // check qualifier range wether match or not
@@ -742,7 +742,8 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
                 if (scan_qu_start.compare(qual) > 0) {
                     // seek to start qual
                     SeekIterator(key.ToString(), scan_cf.ToString(), scan_qu_start.ToString(), kLatestTs, it);
-                    continue;
+                    VLOG(10) << "ll-scan seek to target qualifier " << DebugString(scan_qu_start.ToString());
+		    continue;
                 } else if (scan_qu_end.compare(qual) < 0) {
                     // seek to next cf
                     ++qu_it;
@@ -751,11 +752,13 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
                         std::string next_key;
                         m_key_operator->FindSuccessor(key.ToString(), &next_key);
                         SeekIterator(next_key, "", "", kLatestTs, it);
+                    	VLOG(10) << "ll-scan seek to next key " << DebugString(next_key);
                         continue;
                     } else {
                         scan_cf = qu_it->first;
                         // seek to next cf
                         SeekIterator(key.ToString(), scan_cf.ToString(), "", kLatestTs, it);
+                    	VLOG(10) << "ll-scan seek to next cf " << DebugString(scan_cf.ToString());
                         continue;
                     }
                 }
@@ -774,6 +777,7 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
 
         if (compact_strategy->ScanDrop(it->key(), 0)) {
             // skip drop record
+	    VLOG(10) << "ll-scan scan drop, " << key.ToString();
             it->Next();
             continue;
         }
@@ -841,6 +845,7 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
             if (!FilterCell(scan_options, col.ToString(), qual.ToString(), ts)) {
                 value_list->add_key_values()->CopyFrom(kv);
                 buffer_size += key.size() + col.size() + qual.size() + sizeof(ts) + value.size();
+		VLOG(10) << "ll-scan Get kv " << key.ToString() << ", buffer_size " << buffer_size;
             }
         } else {
             row_buf.push_back(kv);
@@ -848,7 +853,7 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
 
         // check scan buffer
         if (buffer_size >= scan_options.max_size) {
-            VLOG(10) << "stream scan, break scan context, version_num " << version_num
+            VLOG(10) << "ll-scan, stream scan, break scan context, version_num " << version_num
                 << ", key " << DebugString(key.ToString()) << ", col " << DebugString(col.ToString())
                 << ", qual " << DebugString(qual.ToString());
             break;
