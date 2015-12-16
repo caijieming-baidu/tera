@@ -1534,6 +1534,7 @@ void TabletIO::SetupScanRowOptions(const ScanTabletRequest* request,
             scan_options->number_limit = request->number_limit();
         }
     }
+    VLOG(10) << "setup scan_options, number_limit " << scan_options->number_limit;
     if (request->timeout()) {
         scan_options->timeout = request->timeout();
     }
