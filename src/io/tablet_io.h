@@ -177,7 +177,11 @@ private:
     void ProcessRowBuffer(std::list<KeyValuePair>& row_buf,
                           const ScanOptions& scan_options,
                           RowResult* value_list,
-                          uint32_t* buffer_size);
+                          uint32_t* buffer_size,
+                          int64_t* number_limit);
+    bool FilterCell(const ScanOptions& scan_options,
+                    const std::string& col,
+                    const std::string& qual, int64_t ts);
 
     StatusCode InitedScanInterator(const std::string& start_tera_key,
                                    const ScanOptions& scan_options,
@@ -216,6 +220,10 @@ private:
                     int64_t ts, leveldb::Slice value, KeyValuePair* kv);
 
     bool ParseRowKey(const std::string& tera_key, std::string* row_key);
+
+    void SeekIterator(const std::string& row, const std::string& col,
+                      const std::string& qual, int64_t ts,
+                      leveldb::Iterator* scan_it);
 
 private:
     mutable Mutex m_mutex;

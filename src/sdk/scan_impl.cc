@@ -194,7 +194,7 @@ void ResultStreamBatchImpl::ScanSessionReset() {
     ref_count_ += FLAGS_tera_sdk_max_batch_scan_req;
     _scan_desc_impl->SetStart(session_end_key_);
     VLOG(28) << "scan session reset, start key " << session_end_key_
-        << ", ref_count " << ref_count_;
+        << ", ref_count " << ref_count_ << ", session id " << session_id_;
     mu_.Unlock();
     // do io, release lock
     for (int32_t i = 0; i < FLAGS_tera_sdk_max_batch_scan_req; i++) {
@@ -753,6 +753,7 @@ ScanDescImpl::ScanDescImpl(const string& rowkey)
     : _start_timestamp(0),
       _timer_range(NULL),
       _buf_size(65536),
+      _number_limit(std::numeric_limits<long>::max()),
       _is_async(FLAGS_tera_sdk_scan_async_enabled),
       _max_version(1),
       _pack_interval(5000),
@@ -768,6 +769,7 @@ ScanDescImpl::ScanDescImpl(const ScanDescImpl& impl)
       _start_qualifier(impl._start_qualifier),
       _start_timestamp(impl._start_timestamp),
       _buf_size(impl._buf_size),
+      _number_limit(impl._number_limit),
       _is_async(impl._is_async),
       _max_version(impl._max_version),
       _pack_interval(impl._pack_interval),
@@ -785,6 +787,7 @@ ScanDescImpl::ScanDescImpl(const ScanDescImpl& impl)
     for (int32_t i = 0; i < impl.GetSizeofColumnFamilyList(); ++i) {
         _cf_list.push_back(new tera::ColumnFamily(*(impl.GetColumnFamily(i))));
     }
+    _qu_range = impl._qu_range;
 }
 
 ScanDescImpl::~ScanDescImpl() {
@@ -838,6 +841,29 @@ void ScanDescImpl::SetPackInterval(int64_t interval) {
     _pack_interval = interval;
 }
 
+void ScanDescImpl::AddQualifierRange(const std::string& cf,
+                           const std::string& qu_start,
+                           const std::string& qu_end) {
+    if (cf.size()) {
+        VLOG(12) << "add qual, " << cf << ":" << qu_start << ":" << qu_end;
+        _qu_range.insert(std::pair<std::string,
+                std::pair<std::string, std::string> >(cf, std::pair<std::string, std::string>(qu_start, qu_end)));
+    }
+}
+
+void ScanDescImpl::SetQualifierRange(ScanTabletRequest* request) {
+    VLOG(12) << "qu_range size " << _qu_range.size();
+    std::map<std::string, std::pair<std::string, std::string> >::iterator it = _qu_range.begin();
+    for (; it != _qu_range.end(); ++it) {
+        ScanQualifierRange* qu_range = request->add_qu_range();
+        qu_range->set_cf(it->first);
+        const std::pair<std::string, std::string>& range = it->second;
+        qu_range->set_qu_start(range.first);
+        qu_range->set_qu_end(range.second);
+        VLOG(12) << "set qual " << qu_range->DebugString();
+    }
+}
+
 void ScanDescImpl::SetTimeRange(int64_t ts_end, int64_t ts_start) {
     if (_timer_range == NULL) {
         _timer_range = new tera::TimeRange;
@@ -868,6 +894,16 @@ uint64_t ScanDescImpl::GetSnapshot() const {
 
 void ScanDescImpl::SetBufferSize(int64_t buf_size) {
     _buf_size = buf_size;
+}
+
+void ScanDescImpl::SetNumberLimit(int64_t number_limit) {
+    _number_limit = number_limit;
+    VLOG(30) << "number_limit " << _number_limit;
+}
+
+int64_t ScanDescImpl::GetNumberLimit() {
+    VLOG(30) << "get number_limit " << _number_limit;
+    return _number_limit;
 }
 
 void ScanDescImpl::SetAsync(bool async) {

@@ -35,6 +35,12 @@ void ScanDescriptor::SetPackInterval(int64_t interval) {
     _impl->SetPackInterval(interval);
 }
 
+void ScanDescriptor::AddQualifierRange(const std::string& cf,
+                                       const std::string& qu_start,
+                                       const std::string& qu_end) {
+    _impl->AddQualifierRange(cf, qu_start, qu_end);
+}
+
 void ScanDescriptor::SetTimeRange(int64_t ts_end, int64_t ts_start) {
     _impl->SetTimeRange(ts_end, ts_start);
 }
@@ -53,6 +59,14 @@ void ScanDescriptor::SetSnapshot(uint64_t snapshot_id) {
 
 void ScanDescriptor::SetBufferSize(int64_t buf_size) {
     _impl->SetBufferSize(buf_size);
+}
+
+void ScanDescriptor::SetNumberLimit(int64_t number_limit) {
+    _impl->SetNumberLimit(number_limit);
+}
+
+int64_t ScanDescriptor::GetNumberLimit() {
+    return _impl->GetNumberLimit();
 }
 
 void ScanDescriptor::SetAsync(bool async) {

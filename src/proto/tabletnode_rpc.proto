@@ -212,6 +212,11 @@ message ResultCell {
     optional bytes value = 5;
 };
 
+message ScanQualifierRange {
+    optional bytes cf = 1;
+    optional bytes qu_start = 2;
+    optional bytes qu_end = 3;
+};
 
 message ScanTabletRequest {
     optional uint64 sequence_id = 1;
@@ -233,6 +238,8 @@ message ScanTabletRequest {
     optional bool part_of_session = 17;
     optional int64 timestamp = 18 [default = 0];
     optional int64 timeout = 19;
+    repeated ScanQualifierRange qu_range = 20;
+    optional int64 number_limit = 21;
 }
 
 message ScanTabletResponse {

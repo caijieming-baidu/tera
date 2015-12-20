@@ -247,6 +247,12 @@ public:
 
     void SetPackInterval(int64_t timeout);
 
+    void AddQualifierRange(const std::string& cf,
+                           const std::string& qu_start,
+                           const std::string& qu_end);
+
+    void SetQualifierRange(ScanTabletRequest* request);
+
     void SetTimeRange(int64_t ts_end, int64_t ts_start);
 
     bool SetFilterString(const std::string& filter_string);
@@ -256,6 +262,8 @@ public:
     void SetSnapshot(uint64_t snapshot_id);
 
     void SetBufferSize(int64_t buf_size);
+    void SetNumberLimit(int64_t number_limit);
+    int64_t GetNumberLimit();
 
     void SetAsync(bool async);
 
@@ -300,6 +308,8 @@ public:
 
     bool IsKvOnlyTable();
 
+    typedef std::map< std::string, std::pair<std::string, std::string> > QualifierRange;
+
 private:
     bool ParseSubFilterString(const std::string& filter_str, Filter* filter);
 
@@ -313,7 +323,9 @@ private:
     int64_t _start_timestamp;
     std::vector<tera::ColumnFamily*> _cf_list;
     tera::TimeRange* _timer_range;
+    QualifierRange _qu_range;
     int64_t _buf_size;
+    int64_t _number_limit;
     bool _is_async;
     int32_t _max_version;
     int64_t _pack_interval;
