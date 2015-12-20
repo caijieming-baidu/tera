@@ -50,6 +50,7 @@ bool ScanContextManager::InsertContextToCache(ScanContext* context) {
         LOG(WARNING) << "scan, session id " << session_id << " already in cache.";
         return false;
     }
+    VLOG(10) << "ll-scan insert session_id " << session_id << " to cache";
     m_context_cache[session_id] = context;
 
     // update lru
@@ -103,6 +104,7 @@ void ScanContextManager::EvictCache() {
                         delete context->m_it;
                     }
                     delete context;
+		    VLOG(10) <<"ll-scan evict session_id " << session_id << " from cache";
                     break;
                 }
                 // continue try evict next cache item
