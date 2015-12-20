@@ -875,6 +875,7 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
         // check scan buffer
         if (buffer_size >= scan_options.max_size || number_limit >= scan_options.number_limit) {
             VLOG(10) << "ll-scan, stream scan, break scan context, version_num " << version_num
+		<< ", number_limit " << number_limit << ", buffer_size " << buffer_size
                 << ", key " << DebugString(key.ToString()) << ", col " << DebugString(col.ToString())
                 << ", qual " << DebugString(qual.ToString());
             break;
@@ -906,7 +907,9 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
     // check if scan finished
     SetStatusCode(kTableOk, status);
     // if not timeout or buffer size or number limit overflow, then set complete flag
-    if ((buffer_size < scan_options.max_size && number_limit < scan_options.number_limit) && now_time <= time_out) {
+    if ((buffer_size < scan_options.max_size) && 
+	(number_limit < scan_options.number_limit) && 
+	(now_time <= time_out)) {
         *is_complete = true;
     } else {
         if (now_time > time_out && next_start_point) {
