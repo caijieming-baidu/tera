@@ -42,7 +42,7 @@ struct ScanOptions {
 typedef std::pair<ScanTabletResponse*, google::protobuf::Closure*> ScanJob;
 struct ScanContext {
     int64_t m_session_id;
-    void* m_tablet_io;
+    TabletIO* m_tablet_io;
 
     // use for lowlevelscan
     std::string m_start_tera_key;
@@ -67,7 +67,7 @@ public:
     ScanContextManager();
     ~ScanContextManager();
 
-    ScanContext* GetScanContext(void* tablet_io, const ScanTabletRequest* request,
+    ScanContext* GetScanContext(TabletIO* tablet_io, const ScanTabletRequest* request,
                 ScanTabletResponse* response, google::protobuf::Closure* done);
     bool ReleaseScanContext(ScanContext* context);
 

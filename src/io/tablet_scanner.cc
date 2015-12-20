@@ -115,7 +115,7 @@ void ScanContextManager::EvictCache() {
     }
 }
 
-ScanContext* ScanContextManager::GetScanContext(void* tablet_io,
+ScanContext* ScanContextManager::GetScanContext(TabletIO* tablet_io,
                                                 const ScanTabletRequest* request,
                                                 ScanTabletResponse* response,
                                                 google::protobuf::Closure* done) {

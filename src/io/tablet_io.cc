@@ -906,7 +906,9 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
     // check if scan finished
     SetStatusCode(kTableOk, status);
     // if not timeout or buffer size or number limit overflow, then set complete flag
-    if ((buffer_size < scan_options.max_size && number_limit < scan_options.number_limit) && now_time <= time_out) {
+    if ((buffer_size < scan_options.max_size) && 
+	(number_limit < scan_options.number_limit) && 
+	(now_time <= time_out)) {
         *is_complete = true;
     } else {
         if (now_time > time_out && next_start_point) {
