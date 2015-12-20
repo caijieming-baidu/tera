@@ -346,6 +346,11 @@ void TableImpl::CommitScan(ScanTask* scan_task,
     if (impl->GetBufferSize() != 0) {
         request->set_buffer_limit(impl->GetBufferSize());
     }
+    if (impl->GetNumberLimit() > 0) {
+        request->set_number_limit(impl->GetNumberLimit());
+    }
+    VLOG(30) << "server " << server_addr << ", number_limit " << request->number_limit() 
+	<< ", seq id " << request->sequence_id() << ", session id " << request->session_id();
     if (impl->GetTimerRange() != NULL) {
         TimeRange* time_range = request->mutable_timerange();
         time_range->CopyFrom(*(impl->GetTimerRange()));
