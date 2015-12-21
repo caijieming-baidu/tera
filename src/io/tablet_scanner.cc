@@ -212,6 +212,18 @@ bool ScanContextManager::ReleaseScanContext(ScanContext* context) {
     return true;
 }
 
+// when tabletio unload, because scan_context->m_it has reference of version,
+// so we shoud drop all cache it
+void ScanContextManager::DestroyScanCache() {
+    MutexLock l(&m_lock);
+    while (!m_context_cache.empty()) {
+    	std::map<int64_t, ScanContext*>::iterator it = m_context_cache.begin();
+   	ScanContext* context = it->second;
+	m_context_cache.erase(it);
+	DeleteScanContext(context); 
+    }
+}
+
 // access in m_lock context
 void ScanContextManager::DeleteScanContext(ScanContext* context) {
     while (context->m_ref > 1) {

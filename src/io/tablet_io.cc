@@ -317,7 +317,7 @@ bool TabletIO::Unload(StatusCode* status) {
     } else {
         LOG(INFO) << "[Unload] shutdown1 failed, keep log " << m_tablet_path;
     }
-
+    m_tablet_scanner.DestroyScanCache();
     delete m_db;
     m_db = NULL;
 
