@@ -1351,7 +1351,6 @@ bool TabletIO::HandleScan(const ScanTabletRequest* request,
     // concurrency control, ensure only one scanner step init leveldb::Iterator
     ScanContext* context = m_tablet_scanner.GetScanContext(this, request, response, done);
     if (context == NULL) {
-        VLOG(10) << "table " << request->table_name() << ", already handle scan.";
         return true;
     }
 
