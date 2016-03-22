@@ -27,6 +27,7 @@
 #include "sdk/sdk_zk.h"
 #include "sdk/table_impl.h"
 #include "sdk/tera.h"
+#include "common/logger.h"
 #include "utils/crypt.h"
 #include "utils/string_util.h"
 #include "utils/tprinter.h"
@@ -2452,6 +2453,9 @@ int32_t UserOp(Client* client, int32_t argc, char** argv, ErrorCode* err) {
 int main(int argc, char* argv[]) {
     ::google::ParseCommandLineFlags(&argc, &argv, true);
 
+    // open trace footprint
+    ::mdt::TraceGuard trace_guard("tera_trace", "trace");
+
     if (argc < 2) {
         Usage(argv[0]);
         return -1;
@@ -2502,6 +2506,7 @@ int main(int argc, char* argv[]) {
     } else if (cmd == "append") {
         ret = AppendOp(client, argc, argv, &error_code);
     } else if (cmd == "get") {
+        ::mdt::Log(30, "%s, trace get", __func__);
         ret = GetOp(client, argc, argv, &error_code);
     } else if (cmd == "getint64") {
         ret = GetInt64Op(client, argc, argv, &error_code);
@@ -2557,5 +2562,6 @@ int main(int argc, char* argv[]) {
             << " " << error_code.GetReason();
     }
     delete client;
+
     return ret;
 }

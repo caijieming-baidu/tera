@@ -8,6 +8,7 @@
 #include <glog/logging.h>
 
 #include "common/base/scoped_ptr.h"
+#include "common/logger.h"
 #include "master/master_entry.h"
 #include "tabletnode/tabletnode_entry.h"
 #include "tera_entry.h"

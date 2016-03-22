@@ -7,6 +7,21 @@ import "tabletnode.proto";
 package tera;
 
 // tablet operation
+message RpcTraceRequest {
+    optional bool trace_enable = 1 [default = false];
+    optional string db_name = 2;
+    optional string table_name = 3;
+    optional uint64 trace_id = 4;
+    optional uint64 parent_span_id = 5;
+    optional uint64 span_id = 6;
+    optional uint64 cs = 7; // client send ts
+}
+
+message RpcTraceResponse {
+    optional uint64 sr = 1; // server receive ts 
+    optional uint64 ss = 2; // server send ts 
+    optional uint64 cr = 3; // client receive ts 
+}
 
 message SnapshotRequest {
     optional uint64 sequence_id = 1;
@@ -270,6 +285,7 @@ message ReadTabletRequest {
     optional uint64 snapshot_id = 6;
     optional int64 timestamp = 7 [default = 0];
     optional int64 client_timeout_ms = 8 [default = 0];
+    optional RpcTraceRequest trace_req = 9;
 }
 
 message ReadTabletResponse {
@@ -277,6 +293,7 @@ message ReadTabletResponse {
     required uint64 sequence_id = 2;
     optional uint32 success_num = 3;
     optional BytesList detail = 4;
+    optional RpcTraceResponse trace_resp = 9;
 }
 
 message SplitTabletRequest {

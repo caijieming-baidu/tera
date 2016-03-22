@@ -30,6 +30,7 @@
 #include "utils/string_util.h"
 #include "utils/timer.h"
 #include "utils/utils_cmd.h"
+#include "common/logger.h"
 
 DECLARE_string(tera_leveldb_env_type);
 DECLARE_int64(tera_tablet_log_file_size);
@@ -571,7 +572,9 @@ bool TabletIO::Read(const leveldb::Slice& key, std::string* value,
         }
     }
     read_option.rollbacks = rollbacks_;
+    ::mdt::Log(30, "%s, kv mode, begin get key = %s", __func__, key.ToString().c_str());
     leveldb::Status db_status = m_db->Get(read_option, key, value);
+    ::mdt::Log(30, "%s, kv mode, finish get key = %s", __func__, key.ToString().c_str());
     if (!db_status.ok()) {
         // LOG(ERROR) << "fail to read value for key: " << key.data()
         //    << " from tablet: " << m_tablet_path;
@@ -907,8 +910,8 @@ inline bool TabletIO::LowLevelScan(const std::string& start_tera_key,
     // check if scan finished
     SetStatusCode(kTableOk, status);
     // if not timeout or buffer size or number limit overflow, then set complete flag
-    if ((buffer_size < scan_options.max_size) && 
-	(number_limit < scan_options.number_limit) && 
+    if ((buffer_size < scan_options.max_size) &&
+	(number_limit < scan_options.number_limit) &&
 	(now_time <= time_out)) {
         *is_complete = true;
     } else {
@@ -966,6 +969,7 @@ bool TabletIO::LowLevelSeek(const std::string& row_key,
     if (it_data->Valid()) {
         VLOG(10) << "ll-seek: " << "tablet=[" << m_tablet_path
             << "] row_key=[" << row_key << "]";
+        ::mdt::Log(30, "%s, tablet %s, row_key %s", __func__, m_tablet_path.c_str(), row_key.c_str());
         leveldb::Slice cur_row_key;
         m_key_operator->ExtractTeraKey(it_data->key(), &cur_row_key,
                                        NULL, NULL, NULL, NULL);
@@ -1105,6 +1109,7 @@ bool TabletIO::ReadCells(const RowReaderInfo& row_reader, RowResult* value_list,
             return false;
         }
         m_db_ref_count++;
+        ::mdt::Log(30, "%s, db_ref %lu", __func__, m_db_ref_count);
     }
 
     int64_t read_ms = get_micros();
@@ -1134,6 +1139,7 @@ bool TabletIO::ReadCells(const RowReaderInfo& row_reader, RowResult* value_list,
             MutexLock lock(&m_mutex);
             m_db_ref_count--;
         }
+        ::mdt::Log(30, "%s, kv only read finish", __func__);
         return true;
     }
 
@@ -1168,6 +1174,7 @@ bool TabletIO::ReadCells(const RowReaderInfo& row_reader, RowResult* value_list,
     scan_options.snapshot_id = snapshot_id;
 
     VLOG(10) << "ReadCells: " << "key=[" << DebugString(row_reader.key()) << "]";
+    ::mdt::Log(30, "%s, key %s", __func__, DebugString(row_reader.key()).c_str());
 
     bool ret = false;
     // if read all columns, use LowLevelScan
@@ -1181,15 +1188,18 @@ bool TabletIO::ReadCells(const RowReaderInfo& row_reader, RowResult* value_list,
         uint32_t read_row_count = 0;
         uint32_t read_bytes = 0;
         bool is_complete = false;
+        ::mdt::Log(30, "%s, lowlevelscan begin", __func__);
         ret = LowLevelScan(start_tera_key, end_row_key, scan_options,
                            value_list, NULL, &read_row_count, &read_bytes,
                            &is_complete, status);
+        ::mdt::Log(30, "%s, lowlevelscan end", __func__);
     }
     m_counter.read_rows.Inc();
     row_read_delay.Add(get_micros() - read_ms);
     {
         MutexLock lock(&m_mutex);
         m_db_ref_count--;
+        ::mdt::Log(30, "%s, db_ref %lu", __func__, m_db_ref_count);
     }
     if (!ret) {
         return false;

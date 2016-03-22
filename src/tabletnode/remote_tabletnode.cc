@@ -12,6 +12,7 @@
 #include "tabletnode/tabletnode_impl.h"
 #include "utils/counter.h"
 #include "utils/timer.h"
+#include "common/logger.h"
 
 DECLARE_int32(tera_tabletnode_ctrl_thread_num);
 DECLARE_int32(tera_tabletnode_write_thread_num);
@@ -100,10 +101,15 @@ void RemoteTabletNode::ReadTablet(google::protobuf::RpcController* controller,
                                   const ReadTabletRequest* request,
                                   ReadTabletResponse* response,
                                   google::protobuf::Closure* done) {
+    // Log trace
+    ::mdt::TraceGuard trace_guard(30, ::mdt::TraceGuard::SR, const_cast<ReadTabletRequest*>(request), response);
+
     static uint32_t last_print = time(NULL);
     if (read_pending_counter.Get() > FLAGS_tera_request_pending_limit) {
         response->set_sequence_id(request->sequence_id());
         response->set_status(kTabletNodeIsBusy);
+
+        ::mdt::TraceGuard trace_guard(30, ::mdt::TraceGuard::SS, const_cast<ReadTabletRequest*>(request), response);
         done->Run();
         uint32_t now_time = time(NULL);
         if (now_time > last_print) {
@@ -119,6 +125,10 @@ void RemoteTabletNode::ReadTablet(google::protobuf::RpcController* controller,
 
         ReadRpc* rpc = new ReadRpc(controller, request, response, done,
                                    timer, start_micros);
+
+        ::mdt::AttachTrace(uint64_t(rpc));
+        ::mdt::Log(30, "%s, begin queue into taskpool", __func__);
+
         m_read_rpc_schedule->EnqueueRpc(request->tablet_name(), rpc);
         m_read_thread_pool->AddTask(boost::bind(&RemoteTabletNode::DoScheduleRpc, this,
                                                 m_read_rpc_schedule.get()));
@@ -276,6 +286,8 @@ void RemoteTabletNode::DoReadTablet(google::protobuf::RpcController* controller,
                                     google::protobuf::Closure* done,
                                     ReadRpcTimer* timer) {
     VLOG(8) << "accept RPC (ReadTablet)";
+    ::mdt::Log(30, "%s, handle rpc", __func__);
+
     int32_t row_num = request->row_info_list_size();
     read_pending_counter.Sub(row_num);
 
@@ -297,6 +309,8 @@ void RemoteTabletNode::DoReadTablet(google::protobuf::RpcController* controller,
         response->set_sequence_id(request->sequence_id());
         response->set_success_num(0);
         response->set_status(kTableIsBusy);
+
+        ::mdt::TraceGuard trace_guard(30, ::mdt::TraceGuard::SS, const_cast<ReadTabletRequest*>(request), response);
         done->Run();
     }
 
@@ -305,6 +319,7 @@ void RemoteTabletNode::DoReadTablet(google::protobuf::RpcController* controller,
         delete timer;
     }
     VLOG(8) << "finish RPC (ReadTablet)";
+    ::mdt::Log(30, "%s, handle rpc done", __func__);
 }
 
 void RemoteTabletNode::DoWriteTablet(google::protobuf::RpcController* controller,
@@ -408,12 +423,16 @@ void RemoteTabletNode::DoScheduleRpc(RpcSchedule* rpc_schedule) {
     RpcTask* rpc = NULL;
     bool status = rpc_schedule->DequeueRpc(&rpc);
     CHECK(status);
+
+    ::mdt::TraceGuard trace_guard((uint64_t)rpc);
+
     std::string table_name;
 
     switch (rpc->rpc_type) {
     case RPC_READ: {
         ReadRpc* read_rpc = (ReadRpc*)rpc;
         table_name = read_rpc->request->tablet_name();
+        ::mdt::Log(30, "%s, read tablet %s", __func__, table_name.c_str());
         DoReadTablet(read_rpc->controller, read_rpc->start_micros,
                      read_rpc->request, read_rpc->response,
                      read_rpc->done,read_rpc->timer);
@@ -431,6 +450,7 @@ void RemoteTabletNode::DoScheduleRpc(RpcSchedule* rpc_schedule) {
     delete rpc;
     status = rpc_schedule->FinishRpc(table_name);
     CHECK(status);
+
 }
 
 } // namespace tabletnode

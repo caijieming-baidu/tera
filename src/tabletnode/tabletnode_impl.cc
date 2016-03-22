@@ -34,6 +34,7 @@
 #include "utils/string_util.h"
 #include "utils/timer.h"
 #include "utils/utils_cmd.h"
+#include "common/logger.h"
 
 DECLARE_string(tera_tabletnode_port);
 DECLARE_int64(tera_heartbeat_period);
@@ -422,9 +423,12 @@ void TabletNodeImpl::ReadTablet(int64_t start_micros,
     VLOG(10) << "seq_id: " << request->sequence_id()
         << ", req_row: " << row_num
         << ", read_suc: " << read_success_num;
+    ::mdt::Log(30, "%s, seq_id %lu, nr_row %lu, read_succ %lu", __func__, request->sequence_id(),
+                    row_num, read_success_num);
     response->set_sequence_id(request->sequence_id());
     response->set_success_num(read_success_num);
     response->set_status(kTabletNodeOk);
+    ::mdt::TraceGuard trace_guard(30, ::mdt::TraceGuard::SS, const_cast<ReadTabletRequest*>(request), response);
     done->Run();
 
     int64_t now_ms = get_micros();

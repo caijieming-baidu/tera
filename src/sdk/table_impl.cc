@@ -20,6 +20,7 @@
 #include "common/file/file_path.h"
 #include "common/file/recordio/record_io.h"
 
+#include "common/logger.h"
 #include "io/coding.h"
 #include "proto/kv_helper.h"
 #include "proto/proto_helper.h"
@@ -349,7 +350,7 @@ void TableImpl::CommitScan(ScanTask* scan_task,
     if (impl->GetNumberLimit() > 0) {
         request->set_number_limit(impl->GetNumberLimit());
     }
-    VLOG(30) << "server " << server_addr << ", number_limit " << request->number_limit() 
+    VLOG(30) << "server " << server_addr << ", number_limit " << request->number_limit()
 	<< ", seq id " << request->sequence_id() << ", session id " << request->session_id();
     if (impl->GetTimerRange() != NULL) {
         TimeRange* time_range = request->mutable_timerange();
@@ -856,6 +857,7 @@ void TableImpl::DistributeReaders(const std::vector<RowReaderImpl*>& row_reader_
     for (uint32_t i = 0; i < row_reader_list.size(); i++) {
         RowReaderImpl* row_reader = (RowReaderImpl*)row_reader_list[i];
         if (called_by_user) {
+            ::mdt::Log(30, "%s, begin queue into task pool", __func__);
             row_reader->SetId(_next_task_id.Inc());
             _task_pool.PutTask(row_reader);
 
@@ -868,6 +870,7 @@ void TableImpl::DistributeReaders(const std::vector<RowReaderImpl*>& row_reader_
                     boost::bind(&TableImpl::ReaderTimeout, this, row_reader->GetId());
                 _thread_pool->DelayTask(row_timeout, task);
             }
+            ::mdt::Log(30, "%s, end queue into task pool, task id %lu", __func__, row_reader->GetId());
         }
 
         // flow control
@@ -924,6 +927,7 @@ void TableImpl::DistributeReaders(const std::vector<RowReaderImpl*>& row_reader_
 
 void TableImpl::PackReaders(const std::string& server_addr,
                             std::vector<RowReaderImpl*>& reader_list) {
+    ::mdt::Log(30, "%s, begin pack, addr %s", __func__, server_addr.c_str());
     MutexLock lock(&_reader_batch_mutex);
     TaskBatch* reader_buffer = NULL;
     std::map<std::string, TaskBatch>::iterator it =
@@ -931,6 +935,10 @@ void TableImpl::PackReaders(const std::string& server_addr,
     if (it == _reader_batch_map.end()) {
         reader_buffer = &_reader_batch_map[server_addr];
         reader_buffer->row_id_list = new std::vector<int64_t>;
+
+        // thread swap
+        ::mdt::AttachTrace((uint64_t)(reader_buffer->row_id_list));
+
         ThreadPool::Task task =
             boost::bind(&TableImpl::ReaderBatchTimeout, this, server_addr);
         uint64_t timer_id = _thread_pool->DelayTask(_read_commit_timeout, task);
@@ -941,6 +949,7 @@ void TableImpl::PackReaders(const std::string& server_addr,
 
     for (size_t i = 0; i < reader_list.size(); ++i) {
         RowReaderImpl* reader = reader_list[i];
+        ::mdt::Log(30, "%s, pack read, id %lu", __func__, reader->GetId());
         reader_buffer->row_id_list->push_back(reader->GetId());
         reader->DecRef();
     }
@@ -949,6 +958,8 @@ void TableImpl::PackReaders(const std::string& server_addr,
         std::vector<int64_t>* reader_id_list = reader_buffer->row_id_list;
         uint64_t timer_id = reader_buffer->timer_id;
         _reader_batch_mutex.Unlock();
+        ::mdt::Log(30, "%s, send rowread req, addr %s", __func__, server_addr.c_str());
+
         if (_thread_pool->CancelTask(timer_id)) {
             _reader_batch_mutex.Lock();
             _reader_batch_map.erase(server_addr);
@@ -971,8 +982,10 @@ void TableImpl::ReaderBatchTimeout(std::string server_addr) {
         }
         TaskBatch* reader_buffer = &it->second;
         reader_id_list = reader_buffer->row_id_list;
+
         _reader_batch_map.erase(it);
     }
+    ::mdt::TraceGuard trace_guard((uint64_t)(reader_id_list));
     CommitReadersById(server_addr, *reader_id_list);
     delete reader_id_list;
 }
@@ -991,6 +1004,7 @@ void TableImpl::CommitReadersById(const std::string server_addr,
         RowReaderImpl* reader = (RowReaderImpl*)task;
         reader_list.push_back(reader);
     }
+    ::mdt::Log(30, "%s, addr %s", __func__, server_addr.c_str());
     CommitReaders(server_addr, reader_list);
 }
 
@@ -1010,11 +1024,15 @@ void TableImpl::CommitReaders(const std::string server_addr,
         row_reader->ToProtoBuf(row_reader_info);
         // row_reader_info->CopyFrom(row_reader->GetRowReaderInfo());
         reader_id_list->push_back(row_reader->GetId());
+        ::mdt::Log(30, "%s, seq %lu, id %lu", __func__, request->sequence_id(), row_reader->GetId());
         row_reader->DecRef();
     }
     request->set_timestamp(common::timer::get_micros());
     Closure<void, ReadTabletRequest*, ReadTabletResponse*, bool, int>* done =
         NewClosure(this, &TableImpl::ReaderCallBack, reader_id_list);
+
+    // use for rpc trace
+    ::mdt::TraceGuard trace_guard(30, ::mdt::TraceGuard::CS, request, response);
     tabletnode_client_async.ReadTablet(request, response, done);
 }
 
@@ -1024,6 +1042,10 @@ void TableImpl::ReaderCallBack(std::vector<int64_t>* reader_id_list,
                                bool failed, int error_code) {
     _perf_counter.rpc_r.Add(common::timer::get_micros() - request->timestamp());
     _perf_counter.rpc_r_cnt.Inc();
+
+    // trace rpc
+    ::mdt::TraceGuard trace_guard(30, ::mdt::TraceGuard::CR, request, response);
+
     if (failed) {
         if (error_code == sofa::pbrpc::RPC_ERROR_SERVER_SHUTDOWN ||
             error_code == sofa::pbrpc::RPC_ERROR_SERVER_UNREACHABLE ||
@@ -1065,6 +1087,7 @@ void TableImpl::ReaderCallBack(std::vector<int64_t>* reader_id_list,
             if (err == kTabletNodeOk) {
                 row_reader->SetResult(response->detail().row_result(row_result_num++));
                 row_reader->SetError(ErrorCode::kOK);
+                ::mdt::Log(30, "%s, read succ", __func__);
             } else if (err == kKeyNotExist) {
                 row_reader->SetError(ErrorCode::kNotFound, "not found");
             } else { // err == kSnapshotNotExist
@@ -1198,6 +1221,7 @@ bool TableImpl::GetTabletAddrOrScheduleUpdateMeta(const std::string& row,
                                                   SdkTask* task,
                                                   std::string* server_addr) {
     CHECK_NOTNULL(task);
+    ::mdt::Log(30, "%s, begin lock, row %s, task id %lu", __func__, row.c_str(), task->GetId());
     MutexLock lock(&_meta_mutex);
     TabletMetaNode* node = GetTabletMetaNodeForKey(row);
     if (node == NULL) {
@@ -1213,6 +1237,7 @@ bool TableImpl::GetTabletAddrOrScheduleUpdateMeta(const std::string& row,
     }
     if (node->status != NORMAL) {
         VLOG(10) << "abnormal meta for key: " << row;
+        ::mdt::Log(30, "%s, ts location updating, row %s", __func__, row.c_str());
         _pending_task_id_list[row].push_back(task->GetId());
         task->DecRef();
         return false;
@@ -1229,6 +1254,7 @@ bool TableImpl::GetTabletAddrOrScheduleUpdateMeta(const std::string& row,
             UpdateMetaAsync();
         } else {
             VLOG(10) << "update meta in " << update_interval << " (ms) for key:" << row;
+            ::mdt::Log(30, "%s, begin update ts location, row %s", __func__, row.c_str());
             node->status = DELAY_UPDATE;
             ThreadPool::Task delay_task =
                 boost::bind(&TableImpl::DelayUpdateMeta, this,
@@ -1241,6 +1267,7 @@ bool TableImpl::GetTabletAddrOrScheduleUpdateMeta(const std::string& row,
     CHECK_EQ(node->status, NORMAL);
     task->SetMetaTimeStamp(node->update_time);
     *server_addr = node->meta.server_addr();
+    ::mdt::Log(30, "%s, unlock, row %s, addr %s", __func__, row.c_str(), server_addr->c_str());
     return true;
 }
 
