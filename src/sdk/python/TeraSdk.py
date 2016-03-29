@@ -63,14 +63,14 @@ class ScanDescriptor(object):
     def IsAsync(self):
         return lib.tera_scan_descriptor_is_async(self.desc)
 
-    def SetFilterString(self, filter_string):
-        lib.tera_scan_descriptor_set_filter_string(self.desc, filter_string)
-
     def SetSnapshot(self, sid):
         lib.tera_scan_descriptor_set_snapshot(self.desc, sid)
 
     def SetTimeRange(self, start, end):
         lib.tera_scan_descriptor_set_time_range(self.desc, start, end)
+
+    def SetFilter(self, filter_str):
+        return lib.tera_scan_descriptor_set_filter(self.desc, filter_str)
 
 
 class ResultStream(object):
@@ -103,7 +103,7 @@ class ResultStream(object):
         vallen = c_uint64()
         lib.tera_result_stream_row_name(self.stream,
                                         byref(value), byref(vallen))
-        return string_at(value, long(vallen.value))
+        return copy_string_to_user(value, long(vallen.value))
 
     def Family(self):
         """
@@ -113,7 +113,7 @@ class ResultStream(object):
         value = POINTER(c_ubyte)()
         vallen = c_uint64()
         lib.tera_result_stream_family(self.stream, byref(value), byref(vallen))
-        return string_at(value, long(vallen.value))
+        return copy_string_to_user(value, long(vallen.value))
 
     def Qualifier(self):
         """
@@ -124,7 +124,7 @@ class ResultStream(object):
         vallen = c_uint64()
         lib.tera_result_stream_qualifier(self.stream,
                                          byref(value), byref(vallen))
-        return string_at(value, long(vallen.value))
+        return copy_string_to_user(value, long(vallen.value))
 
     def ColumnName(self):
         """
@@ -135,7 +135,7 @@ class ResultStream(object):
         vallen = c_uint64()
         lib.tera_result_stream_column_name(self.stream,
                                            byref(value), byref(vallen))
-        return string_at(value, long(vallen.value))
+        return copy_string_to_user(value, long(vallen.value))
 
     def Value(self):
         """
@@ -145,7 +145,10 @@ class ResultStream(object):
         value = POINTER(c_ubyte)()
         vallen = c_uint64()
         lib.tera_result_stream_value(self.stream, byref(value), byref(vallen))
-        return string_at(value, long(vallen.value))
+        return copy_string_to_user(value, long(vallen.value))
+
+    def ValueInt64(self):
+        return lib.tera_result_stream_value_int64(self.stream)
 
     def Timestamp(self):
         """
@@ -167,8 +170,8 @@ class Client(object):
         """
         err = c_char_p()
         self.client = lib.tera_client_open(conf_path, log_prefix, byref(err))
-        if self.client == NULL:
-            raise TeraSdkException("open client failed:" + err.value)
+        if self.client is None:
+            raise TeraSdkException("open client failed:" + str(err.value))
 
     def OpenTable(self, name):
         """ 打开名为<name>的表
@@ -181,11 +184,10 @@ class Client(object):
             TeraSdkException: 打开table时出错
         """
         err = c_char_p()
-        table = Table()
-        table.table = lib.tera_table_open(self.client, name, byref(err))
-        if table.table == NULL:
+        table_ptr = lib.tera_table_open(self.client, name, byref(err))
+        if table_ptr is None:
             raise TeraSdkException("open table failed:" + err.value)
-        return table
+        return Table(table_ptr)
 
 
 MUTATION_CALLBACK = CFUNCTYPE(None, c_void_p)
@@ -234,7 +236,7 @@ class RowMutation(object):
         vallen = c_uint64()
         lib.tera_row_mutation_rowkey(self.mutation,
                                      byref(value), byref(vallen))
-        return string_at(value, long(vallen.value))
+        return copy_string_to_user(value, long(vallen.value))
 
     def SetCallback(self, callback):
         """ 设置回调
@@ -251,8 +253,8 @@ class Table(object):
     """ 对表格的所有增删查改操作由此发起
         通过Client.OpenTable()获取一个Table对象
     """
-    def __init__(self):
-        pass
+    def __init__(self, table):
+        self.table = table
 
     def NewRowMutation(self, rowkey):
         """ 生成一个对 rowkey 的RowMutation对象
@@ -302,7 +304,19 @@ class Table(object):
         )
         if not result:
             raise TeraSdkException("get record failed:" + err.value)
-        return string_at(value, long(vallen.value))
+        return copy_string_to_user(value, long(vallen.value))
+
+    def GetInt64(self, rowkey, cf, qu, snapshot):
+        err = c_char_p()
+        value = c_int64()
+        result = lib.tera_table_getint64(
+            self.table, rowkey, c_uint64(len(rowkey)), cf,
+            qu, c_uint64(len(qu)), byref(value), byref(err),
+            c_uint64(snapshot)
+        )
+        if not result:
+            raise TeraSdkException("get record failed:" + err.value)
+        return long(value.value)
 
     def Put(self, rowkey, cf, qu, value):
         """ 同步put一个cell的值
@@ -319,6 +333,15 @@ class Table(object):
         result = lib.tera_table_put(
             self.table, rowkey, c_uint64(len(rowkey)), cf,
             qu, c_uint64(len(qu)), value, c_uint64(len(value)), byref(err)
+        )
+        if not result:
+            raise TeraSdkException("put record failed:" + err.value)
+
+    def PutInt64(self, rowkey, cf, qu, value):
+        err = c_char_p()
+        result = lib.tera_table_putint64(
+            self.table, rowkey, c_uint64(len(rowkey)), cf,
+            qu, c_uint64(len(qu)), value, byref(err)
         )
         if not result:
             raise TeraSdkException("put record failed:" + err.value)
@@ -350,7 +373,7 @@ class Table(object):
             desc.desc,
             byref(err)
         )
-        if stream == NULL:
+        if stream is None:
             raise TeraSdkException("scan failed:" + err.value)
         return ResultStream(stream)
 
@@ -402,6 +425,9 @@ def init_function_prototype():
                                              POINTER(c_uint64)]
     lib.tera_result_stream_value.restype = None
 
+    lib.tera_result_stream_value_int64.argtypes = [c_void_p]
+    lib.tera_result_stream_value_int64.restype = c_int64
+
     ###################
     # scan descriptor #
     ###################
@@ -424,9 +450,6 @@ def init_function_prototype():
     lib.tera_scan_descriptor_set_end.argtypes = [c_void_p, c_void_p, c_uint64]
     lib.tera_scan_descriptor_set_end.restype = None
 
-    lib.tera_scan_descriptor_set_filter_string.argtypes = [c_void_p, c_char_p]
-    lib.tera_scan_descriptor_set_filter_string.restype = None
-
     lib.tera_scan_descriptor_set_pack_interval.argtypes = [c_char_p, c_int64]
     lib.tera_scan_descriptor_set_pack_interval.restype = None
 
@@ -443,6 +466,9 @@ def init_function_prototype():
                                                         c_int64, c_int64]
     lib.tera_scan_descriptor_set_time_range.restype = None
 
+    lib.tera_scan_descriptor_set_filter.argtypes = [c_void_p, c_char_p]
+    lib.tera_scan_descriptor_set_filter.restype = c_bool
+
     ##########
     # client #
     ##########
@@ -450,7 +476,7 @@ def init_function_prototype():
     lib.tera_client_open.restype = c_void_p
 
     lib.tera_table_open.argtypes = [c_void_p, c_char_p, POINTER(c_char_p)]
-    lib.tera_table_open.restyep = c_void_p
+    lib.tera_table_open.restype = c_void_p
 
     ################
     # row_mutation #
@@ -482,10 +508,21 @@ def init_function_prototype():
                                    POINTER(c_char_p), c_uint64]
     lib.tera_table_get.restype = c_bool
 
+    lib.tera_table_getint64.argtypes = [c_void_p, c_char_p, c_uint64,
+                                        c_char_p, c_char_p, c_uint64,
+                                        POINTER(c_int64), POINTER(c_char_p),
+                                        c_uint64]
+    lib.tera_table_getint64.restype = c_bool
+
     lib.tera_table_put.argtypes = [c_void_p, c_char_p, c_uint64, c_char_p,
                                    c_char_p, c_uint64, c_char_p, c_uint64,
                                    POINTER(c_char_p)]
     lib.tera_table_put.restype = c_bool
+
+    lib.tera_table_putint64.argtypes = [c_void_p, c_char_p, c_uint64, c_char_p,
+                                        c_char_p, c_uint64, c_int64,
+                                        POINTER(c_char_p)]
+    lib.tera_table_putint64.restype = c_bool
 
     lib.tera_table_delete.argtypes = [c_void_p, c_char_p, c_uint64,
                                       c_char_p, c_char_p, c_uint64]
@@ -501,7 +538,15 @@ def init_function_prototype():
     lib.tera_row_mutation.restype = c_void_p
 
 
+def copy_string_to_user(value, size):
+    result = string_at(value, size)
+    libc = cdll.LoadLibrary('libc.so.6')
+    libc.free.argtypes = [c_void_p]
+    libc.free.restype = None
+    libc.free(value)
+    return result
+
+
 lib = cdll.LoadLibrary('./libtera_c.so')
-NULL = 0
 
 init_function_prototype()

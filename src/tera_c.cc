@@ -59,7 +59,8 @@ tera_client_t* tera_client_open(const char* conf_path, const char* log_prefix, c
     ErrorCode err;
     tera_client_t* result = new tera_client_t;
     result->rep = Client::NewClient(conf_path, log_prefix, &err);
-    if (SaveError(errptr, err)) {
+    if (SaveError(errptr, err) || !result->rep) {
+        delete result;
         return NULL;
     }
     return result;
@@ -69,7 +70,8 @@ tera_table_t* tera_table_open(tera_client_t* client, const char* table_name, cha
     ErrorCode err;
     tera_table_t* result = new tera_table_t;
     result->rep = client->rep->OpenTable(table_name, &err);
-    if (SaveError(errptr, err)) {
+    if (SaveError(errptr, err) || !result->rep) {
+        delete result;
         return NULL;
     }
     return result;
@@ -95,6 +97,21 @@ bool tera_table_get(tera_table_t* table,
     return result;
 }
 
+bool tera_table_getint64(tera_table_t* table,
+                         const char* row_key, uint64_t keylen,
+                         const char* family, const char* qualifier,
+                         uint64_t qulen, int64_t* value,
+                         char** errptr, uint64_t snapshot_id) {
+    ErrorCode err;
+    std::string key_str(row_key, keylen);
+    std::string qu_str(qualifier, qulen);
+    bool result = table->rep->Get(key_str, family, qu_str, value, &err, snapshot_id);
+    if (SaveError(errptr, err)) {
+        return false;
+    }
+    return result;
+}
+
 bool tera_table_put(tera_table_t* table,
                     const char* row_key, uint64_t keylen,
                     const char* family, const char* qualifier,
@@ -105,6 +122,21 @@ bool tera_table_put(tera_table_t* table,
     std::string qu_str(qualifier, qulen);
     std::string value_str(value, vallen);
     bool result = table->rep->Put(key_str, family, qu_str, value_str, &err);
+    if (SaveError(errptr, err)) {
+        return false;
+    }
+    return result;
+}
+
+bool tera_table_putint64(tera_table_t* table,
+                         const char* row_key, uint64_t keylen,
+                         const char* family, const char* qualifier,
+                         uint64_t qulen, int64_t value,
+                         char** errptr) {
+    ErrorCode err;
+    std::string key_str(row_key, keylen);
+    std::string qu_str(qualifier, qulen);
+    bool result = table->rep->Put(key_str, family, qu_str, value, &err);
     if (SaveError(errptr, err)) {
         return false;
     }
@@ -225,10 +257,6 @@ void tera_scan_descriptor_set_end(tera_scan_descriptor_t* desc, const char* end_
     desc->rep->SetEnd(key);
 }
 
-void tera_scan_descriptor_set_filter_string(tera_scan_descriptor_t* desc, const char* filter_string) {
-    desc->rep->SetFilterString(filter_string);
-}
-
 void tera_scan_descriptor_set_pack_interval(tera_scan_descriptor_t* desc, int64_t interval) {
     desc->rep->SetPackInterval(interval);
 }
@@ -244,6 +272,10 @@ void tera_scan_descriptor_set_snapshot(tera_scan_descriptor_t* desc, uint64_t sn
 // NOTE: arguments order is different from C++ sdk(tera.h)
 void tera_scan_descriptor_set_time_range(tera_scan_descriptor_t* desc, int64_t ts_start, int64_t ts_end) {
     desc->rep->SetTimeRange(ts_end, ts_start);
+}
+
+bool tera_scan_descriptor_set_filter(tera_scan_descriptor_t* desc, char* filter_str) {
+    return desc->rep->SetFilter(filter_str);
 }
 
 bool tera_result_stream_done(tera_result_stream_t* stream, char** errptr) {
@@ -293,6 +325,10 @@ void tera_result_stream_value(tera_result_stream_t* stream, char** str, uint64_t
     std::string val = stream->rep->Value();
     *str = CopyString(val);
     *strlen = val.size();
+}
+
+int64_t tera_result_stream_value_int64(tera_result_stream_t* stream) {
+    return stream->rep->ValueInt64();
 }
 
 }  // end extern "C"
