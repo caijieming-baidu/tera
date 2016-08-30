@@ -292,22 +292,6 @@ Status DBTable::Init() {
         uint32_t i = *it;
         DBImpl* impl = lg_list_[i];
         s = impl->RecoverLastDumpToLevel0(lg_edits[i]);
-
-        // LogAndApply to lg's manifest
-        if (s.ok()) {
-            MutexLock lock(&impl->mutex_);
-            s = impl->versions_->LogAndApply(lg_edits[i], &impl->mutex_);
-            if (s.ok()) {
-                impl->DeleteObsoleteFiles();
-                impl->MaybeScheduleCompaction();
-            } else {
-                Log(options_.info_log, "[%s] Fail to modify manifest of lg %d",
-                    dbname_.c_str(),
-                    i);
-            }
-        } else {
-            Log(options_.info_log, "[%s] Fail to dump log to level 0", dbname_.c_str());
-        }
         delete lg_edits[i];
     }
 
@@ -820,7 +804,6 @@ Status DBTable::RecoverLogFile(uint64_t log_number, uint64_t recover_limit,
             if (this->status != NULL && this->status->ok()) *this->status = s;
         }
     };
-
     mutex_.AssertHeld();
 
     // Open the log file
@@ -860,7 +843,7 @@ Status DBTable::RecoverLogFile(uint64_t log_number, uint64_t recover_limit,
         //    dbname_.c_str(), batch_seq, last_sequence_, WriteBatchInternal::Count(&batch));
         if (last_seq >= recover_limit) {
             Log(options_.info_log, "[%s] exceed limit %lu, ignore %lu ~ %lu",
-                        dbname_.c_str(), recover_limit, first_seq, last_seq);
+                dbname_.c_str(), recover_limit, first_seq, last_seq);
             continue;
         }
 
@@ -915,7 +898,6 @@ Status DBTable::RecoverLogFile(uint64_t log_number, uint64_t recover_limit,
         }
     }
     delete file;
-
     return status;
 }
 
