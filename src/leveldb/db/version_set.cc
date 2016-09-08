@@ -1057,14 +1057,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     force_switch_manifest_ = true;
   }
   if (force_switch_manifest_) {
-    delete descriptor_log_;
-    delete descriptor_file_;
-    descriptor_log_ = NULL;
-    descriptor_file_ = NULL;
     manifest_file_number_ = NewFileNumber();
-    Log(options_->info_log, "[%s] force switch MANIFEST to %lu",
-        dbname_.c_str(), manifest_file_number_);
-    force_switch_manifest_ = false;
     last_switch_manifest_ = env_->NowMicros();
   }
 
@@ -1073,6 +1066,15 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   // Unlock during expensive MANIFEST log write
   {
     mu->Unlock();
+    if (force_switch_manifest_) {
+        delete descriptor_log_;
+        delete descriptor_file_;
+        descriptor_log_ = NULL;
+        descriptor_file_ = NULL;
+        Log(options_->info_log, "[%s] force switch MANIFEST to %lu",
+                dbname_.c_str(), manifest_file_number_);
+        force_switch_manifest_ = false;
+    }
     if (descriptor_log_ == NULL) {
       // Initialize new descriptor log file if necessary by creating
       // a temporary file that contains a snapshot of the current version.
@@ -1124,6 +1126,13 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
       // No need to double-check MANIFEST in case of error since it
       // will be discarded below.
     }
+    if (!s.ok() && !new_manifest_file.empty()) {
+      delete descriptor_log_;
+      delete descriptor_file_;
+      descriptor_log_ = NULL;
+      descriptor_file_ = NULL;
+      env_->DeleteFile(new_manifest_file);
+    }
 
     mu->Lock();
   }
@@ -1136,13 +1145,6 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     last_sequence_ = edit->GetLastSequence();
   } else {
     delete v;
-    if (!new_manifest_file.empty()) {
-      delete descriptor_log_;
-      delete descriptor_file_;
-      descriptor_log_ = NULL;
-      descriptor_file_ = NULL;
-      env_->DeleteFile(new_manifest_file);
-    }
     force_switch_manifest_ = true;
     Log(options_->info_log, "[%s][dfs error] set force_switch_manifest", dbname_.c_str());
   }

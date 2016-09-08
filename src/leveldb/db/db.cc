@@ -137,6 +137,7 @@ Status DestroyDB(const std::string& dbname, const Options& opt) {
             }
         } else if (options.lg_info_list) {
             delete options.lg_info_list;
+            options.lg_info_list = NULL;
         }
         Status lg_ret = DestroyLG(lgname, lg_opt);
         if (!lg_ret.ok()) {
@@ -144,6 +145,7 @@ Status DestroyDB(const std::string& dbname, const Options& opt) {
         }
     }
     delete options.exist_lg_list;
+    options.exist_lg_list = NULL;
 
     // clean db/ dir
     uint64_t number;

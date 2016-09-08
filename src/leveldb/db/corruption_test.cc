@@ -162,6 +162,7 @@ class CorruptionTest {
     }
 
     // Do it
+    fprintf(stderr, "corruption_test: Corrupt file %s, offset %d, bytes %d\n", fname.c_str(), offset, bytes_to_corrupt);
     std::string contents;
     Status s = ReadFileToString(Env::Default(), fname, &contents);
     ASSERT_TRUE(s.ok()) << s.ToString();
