@@ -278,7 +278,7 @@ Status DBTable::Init() {
             }
             s = RecoverLogFile(logfiles[i], recover_limit, &lg_edits);
             if (!s.ok()) {
-                Log(options_.info_log, "[%s] Fail to RecoverLogFile %ld",
+                Log(options_.info_log, "[%s] Fail to RecoverLogFile #%lu",
                     dbname_.c_str(), logfiles[i]);
             }
         }
@@ -302,6 +302,7 @@ Status DBTable::Init() {
 
     if (s.ok() && !options_.disable_wal) {
         std::string log_file_name = LogHexFileName(dbname_, last_sequence_ + 1);
+        Log(options_.info_log, "[%s] new logfile #%lu\n", dbname_.c_str(), last_sequence_ + 1);
         s = options_.env->NewWritableFile(log_file_name, &logfile_);
         if (s.ok()) {
             //Log(options_.info_log, "[%s] open logfile %s",
@@ -784,7 +785,7 @@ Status DBTable::GatherLogFile(uint64_t begin_num,
         logfiles->push_back(last_number);
         Log(options_.info_log, "[%s] add log file #%lu", dbname_.c_str(), last_number);
     }
-    Log(options_.info_log, "[%s] begin_seq= %lu, first log num= %lu, last num=%lu, log count=%lu\n",
+    Log(options_.info_log, "[%s] begin_seq=%lu, first_log_num=%lu, last_num=%lu, log_count=%lu\n",
         dbname_.c_str(), begin_num, first_log_num, last_number, logfiles->size());
     std::sort(logfiles->begin(), logfiles->end());
     return s;
@@ -823,7 +824,7 @@ Status DBTable::RecoverLogFile(uint64_t log_number, uint64_t recover_limit,
     reporter.status = (options_.paranoid_checks ? &status : NULL);
     log::Reader reader(file, &reporter, true/*checksum*/,
                      0/*initial_offset*/);
-    Log(options_.info_log, "[%s] Recovering log #%lx, sequence limit %lu",
+    Log(options_.info_log, "[%s] Recovering log #%lu, sequence limit #%lu",
         dbname_.c_str(), log_number, recover_limit);
 
     // Read all the records and add to a memtable
@@ -842,7 +843,7 @@ Status DBTable::RecoverLogFile(uint64_t log_number, uint64_t recover_limit,
         //Log(options_.info_log, "[%s] batch_seq= %lu, last_seq= %lu, count=%d",
         //    dbname_.c_str(), batch_seq, last_sequence_, WriteBatchInternal::Count(&batch));
         if (last_seq >= recover_limit) {
-            Log(options_.info_log, "[%s] exceed limit %lu, ignore %lu ~ %lu",
+            Log(options_.info_log, "[%s] exceed limit #%lu, ignore #%lu ~ #%lu",
                 dbname_.c_str(), recover_limit, first_seq, last_seq);
             continue;
         }
@@ -1102,6 +1103,8 @@ int DBTable::SwitchLog(bool blocked_switch) {
         std::string log_file_name = LogHexFileName(dbname_, last_sequence_ + 1);
         Status s = env_->NewWritableFile(log_file_name, &logfile);
         if (s.ok()) {
+            Log(options_.info_log, "[%s] switch logfile #%lu, prev logsize %lu\n", dbname_.c_str(),
+                last_sequence_ + 1, current_log_size_);
             log_->Stop(blocked_switch);
             logfile_ = logfile;
             log_ = new log::AsyncWriter(logfile, options_.log_async_mode);
