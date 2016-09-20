@@ -384,7 +384,6 @@ bool DBImpl::IsDbExist() {
     if (ParseFileName(files[i], &number, &type) && type == kDescriptorFile) {
       std::string dscname = dbname_ + "/" + files[i];
       uint64_t fsize = 0;
-      env_->GetFileSize(dscname, &fsize);
       Status s = env_->GetFileSize(dscname, &fsize);
       if (s.ok() && fsize == 0) {
         // if CURRENT file not exist, empty MANIFEST is dangerous, delete it
@@ -1197,7 +1196,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     if (has_imm_.NoBarrier_Load() != NULL) {
       const uint64_t imm_start = env_->NowMicros();
       mutex_.Lock();
-      if (imm_ != NULL) {
+      if (imm_ != NULL && !imm_->BeingFlushed() ) {
         CompactMemTable(); // no need check failure, because imm_ not null if dump fail.
         bg_cv_.SignalAll();  // Wakeup MakeRoomForWrite() if necessary
       }

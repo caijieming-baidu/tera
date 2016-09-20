@@ -2094,7 +2094,7 @@ void VersionSet::ReleaseCompaction(Compaction* c, Status& s) {
     level0_compactions_in_progress_.resize(0);
   }
   if (!s.ok()) {
-    Finalize(c->input_version_);
+    Finalize(current_); // reculate level score
   }
   return;
 }
