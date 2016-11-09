@@ -1924,7 +1924,7 @@ int32_t CompactTabletOp(Client* client, int32_t argc, char** argv, ErrorCode* er
     request.set_tablet_name(tablet_it->table_name);
     request.mutable_key_range()->set_key_start(tablet_it->start_key);
     request.mutable_key_range()->set_key_end(tablet_it->end_key);
-    tabletnode::TabletNodeClient tabletnode_client(tablet_it->server_addr, 3600000);
+    tabletnode::TabletNodeClient tabletnode_client(tablet_it->server_addr, 10000);
 
     std::cout << "try compact tablet: " << tablet_it->path;
     if (lg >= 0) {
